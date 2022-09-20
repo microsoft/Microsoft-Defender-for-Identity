@@ -318,6 +318,7 @@ System,Security Group Management,{0CCE9237-69AE-11D9-BED3-505054503030},Success 
 System,Computer Account Management,{0CCE9236-69AE-11D9-BED3-505054503030},Success and Failure,3
 System,User Account Management,{0CCE9235-69AE-11D9-BED3-505054503030},Success and Failure,3
 System,Directory Service Access,{0CCE923B-69AE-11D9-BED3-505054503030},Success and Failure,3
+System,Directory Service Changes,{0CCE923B-69AE-11D9-BED3-505054503030},Success and Failure,3
 System,Credential Validation,{0CCE923F-69AE-11D9-BED3-505054503030},Success and Failure,
 '@ | ConvertFrom-Csv
     $properties = ($expectedAuditing | Get-Member -MemberType NoteProperty).Name
