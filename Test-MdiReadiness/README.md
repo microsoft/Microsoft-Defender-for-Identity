@@ -1,5 +1,22 @@
 # Test-MdiReadiness.ps1
 
+The Test-MdiReadiness.ps1 script will query your domain and domain controllers to report if the different **Microsoft Defender for Identity** prerequisites are in place or not. It creates an html report and a detailed json file with all the collected data.
+
+It will check the domain for the following items:
+
+- [Object Auditing](https://aka.ms/mdi/objectauditing)
+- [Exchange Auditing](https://aka.ms/mdi/exchangeauditing)
+- [ADFS Auditing](https://aka.ms/mdi/adfsauditing)
+
+It will test the domain controllers for the following items:
+
+- [Advanced Audit Policy Configuration](https://aka.ms/mdi/advancedauditing)
+- [NTLM Auditing](https://aka.ms/mdi/ntlmauditing)
+- [Power scheme is set to *high performance*](https://aka.ms/mdi/powersettings)
+- [Root certificates are updated](https://aka.ms/mdi/rootcertificates)
+
+![example html report](html-report.png)
+
 ```txt
 NAME
     .\Test-MdiReadiness.ps1
@@ -41,27 +58,6 @@ PARAMETERS
         Accept pipeline input?       false
         Accept wildcard characters?  false
 
-    -WhatIf [<SwitchParameter>]
-
-        Required?                    false
-        Position?                    named
-        Default value
-        Accept pipeline input?       false
-        Accept wildcard characters?  false
-
-    -Confirm [<SwitchParameter>]
-
-        Required?                    false
-        Position?                    named
-        Default value
-        Accept pipeline input?       false
-        Accept wildcard characters?  false
-
-    <CommonParameters>
-        This cmdlet supports the common parameters: Verbose, Debug,
-        ErrorAction, ErrorVariable, WarningAction, WarningVariable,
-        OutBuffer, PipelineVariable, and OutVariable. For more information, see
-        about_CommonParameters (https:/go.microsoft.com/fwlink/?LinkID=113216).
 
 NOTES
 
@@ -75,7 +71,7 @@ NOTES
     -------------------------- EXAMPLE 1 --------------------------
 
     PS C:\>.\Test-MdiReadiness.ps1 -OpenHtmlReport
-
+    False
 
     -------------------------- EXAMPLE 2 --------------------------
 
@@ -97,4 +93,5 @@ NOTES
     VERBOSE: Getting MDI related Exchange auditing configuration
     VERBOSE: Creating detailed json report: .\mdi-CONTOSO.COM.json
     VERBOSE: Creating html report: .\mdi-CONTOSO.COM.html
+    False
 ```
