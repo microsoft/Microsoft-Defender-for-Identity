@@ -311,15 +311,15 @@ function Get-mdiAdvancedAuditing {
     )
 
     $expectedAuditing = @'
-Policy Target,Subcategory,Subcategory GUID,Inclusion Setting,Value
+Policy Target,Subcategory,Subcategory GUID,Inclusion Setting,Setting Value
 System,Security System Extension,{0CCE9211-69AE-11D9-BED3-505054503030},Success and Failure,3
 System,Distribution Group Management,{0CCE9238-69AE-11D9-BED3-505054503030},Success and Failure,3
 System,Security Group Management,{0CCE9237-69AE-11D9-BED3-505054503030},Success and Failure,3
 System,Computer Account Management,{0CCE9236-69AE-11D9-BED3-505054503030},Success and Failure,3
 System,User Account Management,{0CCE9235-69AE-11D9-BED3-505054503030},Success and Failure,3
 System,Directory Service Access,{0CCE923B-69AE-11D9-BED3-505054503030},Success and Failure,3
-System,Directory Service Changes,{0CCE923B-69AE-11D9-BED3-505054503030},Success and Failure,3
-System,Credential Validation,{0CCE923F-69AE-11D9-BED3-505054503030},Success and Failure,
+System,Directory Service Changes,{0CCE923C-69AE-11D9-BED3-505054503030},Success and Failure,3
+System,Credential Validation,{0CCE923F-69AE-11D9-BED3-505054503030},Success and Failure,3
 '@ | ConvertFrom-Csv
     $properties = ($expectedAuditing | Get-Member -MemberType NoteProperty).Name
 
@@ -328,7 +328,7 @@ System,Credential Validation,{0CCE923F-69AE-11D9-BED3-505054503030},Success and 
     $output = Invoke-mdiRemoteCommand -ComputerName $ComputerName -CommandLine $commandLine
     $advancedAuditing = $output | ConvertFrom-Csv | Where-Object {
         $_.Subcategory -in ('Security System Extension', 'Distribution Group Management', 'Security Group Management',
-            'Computer Account Management', 'User Account Management', 'Directory Service Access', 'Credential Validation')
+            'Computer Account Management', 'User Account Management', 'Directory Service Access', 'Directory Service Changes', 'Credential Validation')
     } | Select-Object -Property $properties
 
     $compareParams = @{
