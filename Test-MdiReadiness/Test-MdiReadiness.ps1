@@ -311,15 +311,15 @@ function Get-mdiAdvancedAuditing {
     )
 
     $expectedAuditing = @'
-Policy Target,Subcategory,Subcategory GUID,Inclusion Setting,Value
+Policy Target,Subcategory,Subcategory GUID,Inclusion Setting,Setting Value
 System,Security System Extension,{0CCE9211-69AE-11D9-BED3-505054503030},Success and Failure,3
 System,Distribution Group Management,{0CCE9238-69AE-11D9-BED3-505054503030},Success and Failure,3
 System,Security Group Management,{0CCE9237-69AE-11D9-BED3-505054503030},Success and Failure,3
 System,Computer Account Management,{0CCE9236-69AE-11D9-BED3-505054503030},Success and Failure,3
 System,User Account Management,{0CCE9235-69AE-11D9-BED3-505054503030},Success and Failure,3
 System,Directory Service Access,{0CCE923B-69AE-11D9-BED3-505054503030},Success and Failure,3
-System,Directory Service Changes,{0CCE923B-69AE-11D9-BED3-505054503030},Success and Failure,3
-System,Credential Validation,{0CCE923F-69AE-11D9-BED3-505054503030},Success and Failure,
+System,Directory Service Changes,{0CCE923C-69AE-11D9-BED3-505054503030},Success and Failure,3
+System,Credential Validation,{0CCE923F-69AE-11D9-BED3-505054503030},Success and Failure,3
 '@ | ConvertFrom-Csv
     $properties = ($expectedAuditing | Get-Member -MemberType NoteProperty).Name
 
@@ -327,8 +327,7 @@ System,Credential Validation,{0CCE923F-69AE-11D9-BED3-505054503030},Success and 
     $commandLine = 'cmd.exe /c auditpol.exe /backup /file:%temp%\{0} >NULL && cmd.exe /c type %temp%\{0}' -f $localTempFile
     $output = Invoke-mdiRemoteCommand -ComputerName $ComputerName -CommandLine $commandLine
     $advancedAuditing = $output | ConvertFrom-Csv | Where-Object {
-        $_.Subcategory -in ('Security System Extension', 'Distribution Group Management', 'Security Group Management',
-            'Computer Account Management', 'User Account Management', 'Directory Service Access', 'Credential Validation')
+        $_.Subcategory -in $expectedAuditing.Subcategory
     } | Select-Object -Property $properties
 
     $compareParams = @{
@@ -352,7 +351,7 @@ function Get-mdiDsSacl {
     )
 
     $searcher = [System.DirectoryServices.DirectorySearcher]::new(([adsi]$LdapPath))
-    $searcher.CacheResults = $False
+    $searcher.CacheResults = $false
     $searcher.SearchScope = [System.DirectoryServices.SearchScope]::Base
     $searcher.ReferralChasing = [System.DirectoryServices.ReferralChasingOption]::All
     $searcher.SecurityMasks = [System.DirectoryServices.SecurityMasks]::Sacl
@@ -381,8 +380,8 @@ function Get-mdiDsSacl {
     } catch {
         $e = $_
         $return = [pscustomobject]@{
-            isAuditingOk = $False
-            details      = if ($_.Exception.InnerException) { $_.Exception.InnerException.Message } else { $_.Exception.Message }
+            isAuditingOk = if ($e.Exception.InnerException.ErrorCode -eq -2147016656) { 'N/A' } else { $false }
+            details      = if ($e.Exception.InnerException.Message) { $_.Exception.InnerException.Message } else { $_.Exception.Message }
         }
     }
     $return
@@ -595,7 +594,7 @@ ul { list-style-type: square; margin: 15px; padding: 5px;}
 {3}
 <h4>Other requirements</h4>
 <ul>
-<li>For virtualized machines, please verify that the memory is allocated to the virtual machine at all times, and that the <i>'Large Send Offload (LSO)'</i> is disabled</li>
+<li>For VMware virtualized machines, please verify that the memory is allocated to the virtual machine at all times, and that the <i>'Large Send Offload (LSO)'</i> is disabled</li>
 <li>Please verify that the required ports are opened from the sensor servers to the devices on the network. For more details, see <a href='{4}/NNR'>{4}/NNR</a></li>
 <li>Please verify that the <i>'Restrict clients allowed to make remote calls to SAM'</i> policy is configured as required. For more details, see <a href='{4}/SAMR'>{4}/SAMR</a></li>
 </ul>
