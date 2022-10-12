@@ -128,6 +128,50 @@ function Get-mdiPowerScheme {
 }
 
 
+function Get-mdiServerRequirements {
+    param (
+        [Parameter(Mandatory = $true)] [string] $ComputerName
+    )
+    $csiParams = @{
+        ComputerName = $ComputerName
+        Namespace    = 'root\cimv2'
+        Class        = 'Win32_ComputerSystem'
+        Property     = 'NumberOfLogicalProcessors', 'TotalPhysicalMemory'
+        ErrorAction  = 'SilentlyContinue'
+    }
+    $csi = Get-WmiObject @csiParams
+
+    $osParams = @{
+        ComputerName = $ComputerName
+        Namespace    = 'root\cimv2'
+        Class        = 'Win32_OperatingSystem'
+        Property     = 'SystemDrive'
+        ErrorAction  = 'SilentlyContinue'
+    }
+    $osdiskParams = @{
+        ComputerName = $ComputerName
+        Namespace    = 'root\cimv2'
+        Class        = 'Win32_LogicalDisk'
+        Property     = 'FreeSpace', 'DeviceID'
+        Filter       = "DeviceID = '{0}'" -f (Get-WmiObject @osParams).SystemDrive
+        ErrorAction  = 'SilentlyContinue'
+    }
+    $osdisk = Get-WmiObject @osdiskParams
+
+
+    $return = [pscustomobject]@{
+        isMinHwRequirementsOk = ($csi.NumberOfLogicalProcessors -ge 2) -and ($csi.TotalPhysicalMemory -ge 6gb) -and ($osdisk.FreeSpace -ge 6gb)
+        details               = [pscustomobject]@{
+            NumberOfLogicalProcessors = $csi.NumberOfLogicalProcessors
+            TotalPhysicalMemory       = $csi.TotalPhysicalMemory
+            OsDiskDeviceID            = $osdisk.DeviceID
+            OsDiskFreeSpace           = $osdisk.FreeSpace
+        }
+    }
+    $return
+}
+
+
 function Get-mdiRegitryValueSet {
     param (
         [Parameter(Mandatory = $true)] [string] $ComputerName,
@@ -201,6 +245,7 @@ function Get-mdiCaptureComponent {
         [Parameter(Mandatory = $true)] [string] $ComputerName
     )
     $uninstallRegKey = 'SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall'
+    $return = @()
     try {
         foreach ($registryView in @('Registry32', 'Registry64')) {
             $hklm = [Microsoft.Win32.RegistryKey]::OpenRemoteBaseKey('LocalMachine', $ComputerName, $registryView)
@@ -212,7 +257,7 @@ function Get-mdiCaptureComponent {
                 $appDisplayName = $appDetails.GetValue('DisplayName')
                 $appVersion = $appDetails.GetValue('DisplayVersion')
                 if ($appDisplayName -match 'npcap|winpcap') {
-                    $return = '{0} ({1})' -f $appDisplayName, $appVersion
+                    $return += '{0} ({1})' -f $appDisplayName, $appVersion
                 }
             }
             $hklm.Close()
@@ -220,7 +265,7 @@ function Get-mdiCaptureComponent {
     } catch {
         $return = 'N/A'
     }
-    $return
+    ($return -join ', ')
 }
 
 
@@ -492,6 +537,11 @@ function Get-mdiDomainControllerReadiness {
         if (Test-Connection -ComputerName $dc.FQDN -Count 2 -Quiet) {
             $details = [ordered]@{}
 
+            Write-Verbose -Message "Testing server requirements for $($dc.FQDN)"
+            $serverRequirements = Get-mdiServerRequirements -ComputerName $dc.FQDN
+            $dc.Add('ServerRequirements', $serverRequirements.isMinHwRequirementsOk)
+            $details.Add('ServerRequirementsDetails', $serverRequirements.details)
+
             Write-Verbose -Message "Testing power settings for $($dc.FQDN)"
             $powerSettings = Get-mdiPowerScheme -ComputerName $dc.FQDN
             $dc.Add('PowerSettings', $powerSettings.isPowerSchemeOk)
@@ -597,6 +647,7 @@ ul { list-style-type: square; margin: 15px; padding: 5px;}
 <li>For VMware virtualized machines, please verify that the memory is allocated to the virtual machine at all times, and that the <i>'Large Send Offload (LSO)'</i> is disabled</li>
 <li>Please verify that the required ports are opened from the sensor servers to the devices on the network. For more details, see <a href='{4}/NNR'>{4}/NNR</a></li>
 <li>Please verify that the <i>'Restrict clients allowed to make remote calls to SAM'</i> policy is configured as required. For more details, see <a href='{4}/SAMR'>{4}/SAMR</a></li>
+<li>Please verify that the Directory Services Account (DSA) configured for the domain, has read permissions on the <i>Deleted Objects Container</i>. For more details, see <a href='{4}/dsa-permissions'>{4}/dsa-permissions</a></li>
 </ul>
 <hr>
 <br/>Full details file can be found at <a href='{5}'>{5}</a><br/>
@@ -619,7 +670,7 @@ function Test-mdiReadinessResult {
 
     $dcsOk = (($ReportData.DomainControllers | ForEach-Object {
                 $dc = $_; $properties | ForEach-Object {
-                    $dc | Select-Object -ExpandProperty $_
+                    $dc | Select-Object -ExpandProperty $_ -ErrorAction SilentlyContinue
                 }
             }) -ne $true).Count -eq 0
 
