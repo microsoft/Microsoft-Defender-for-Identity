@@ -453,12 +453,18 @@ S-1-1-0,852331,1,7b8b558a-93a5-4af7-adca-c017e67f1057,Descendant msDS-GroupManag
     $ldapPath = 'LDAP://{0}' -f $ds.defaultNamingContext.Value
 
     $result = Get-mdiDsSacl -LdapPath $ldapPath -ExpectedAuditing $expectedAuditing
+    $appliedAuditing = $result.details
+
+    $isAuditingOk = @(foreach ($expected in $expectedAuditing) {
+            $appliedAuditing | Where-Object { ($_.SecurityIdentifier -eq $expected.SecurityIdentifier) -and ($_.AuditFlagsValue -eq $expected.AuditFlagsValue) -and
+            ($_.InheritedObjectAceType -eq $expected.InheritedObjectAceType) -and ($_.AccessMask -bor $expected.AccessMask) }
+        }).Count -eq $expectedAuditing.Count
+
     $return = @{
-        isObjectAuditingOk = $result.isAuditingOk
+        isObjectAuditingOk = $isAuditingOk
         details            = $result.details
     }
     $return
-
 }
 
 
@@ -608,7 +614,8 @@ tr:nth-child(even) { background-color: #f2f2f2; }
 th { padding: 8px; text-align: left; background-color: #e4e2e0; color: #212121; }
 .red    {background-color: #cd2026; color: #ffffff; }
 .green  {background-color: #4aa564; color: #212121; }
-ul { list-style-type: square; margin: 15px; padding: 5px;}
+ul { list-style: none; padding-left: 0.5em;}
+li:before { content: "►"; display: block; float: left; width: 1.5em; color: #cd2026; }
 </style>
 '@
     $properties = [collections.arraylist] @($ReportData.DomainControllers | Get-Member -MemberType NoteProperty |
