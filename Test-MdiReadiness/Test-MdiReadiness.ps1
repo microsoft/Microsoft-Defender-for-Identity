@@ -404,11 +404,11 @@ function Get-mdiDsSacl {
     try {
         $result = ($searcher.FindOne()).Properties
 
-        $appliedAuditing = [Security.AccessControl.RawSecurityDescriptor]::new($result['ntsecuritydescriptor'][0], 0) |
-            ForEach-Object { $_.SystemAcl } | Select-Object *,
-            @{N = 'AcessMaskDetails'; E = { ([Enum]::ToObject([System.DirectoryServices.ActiveDirectoryRights], $_.AccessMask)) } },
-            @{N = 'AuditFlagsValue'; E = { $_.AuditFlags.value__ } },
-            @{N = 'AceFlagsValue'; E = { $_.AceFlags.value__ } }
+    $appliedAuditing = [Security.AccessControl.RawSecurityDescriptor]::new($result['ntsecuritydescriptor'][0], 0) |
+        ForEach-Object { $_.SystemAcl } | Select-Object *,
+        @{N = 'AccessMaskDetails'; E = { (([Enum]::ToObject([System.DirectoryServices.ActiveDirectoryRights], $_.AccessMask))).ToString() } },
+        @{N = 'AuditFlagsValue'; E = { $_.AuditFlags.value__ } },
+        @{N = 'AceFlagsValue'; E = { $_.AceFlags.value__ } }
 
 
         $properties = ($expectedAuditing | Get-Member -MemberType NoteProperty).Name
@@ -455,10 +455,11 @@ S-1-1-0,852331,1,7b8b558a-93a5-4af7-adca-c017e67f1057,Descendant msDS-GroupManag
     $result = Get-mdiDsSacl -LdapPath $ldapPath -ExpectedAuditing $expectedAuditing
     $appliedAuditing = $result.details
 
-    $isAuditingOk = @(foreach ($expected in $expectedAuditing) {
-            $appliedAuditing | Where-Object { ($_.SecurityIdentifier -eq $expected.SecurityIdentifier) -and ($_.AuditFlagsValue -eq $expected.AuditFlagsValue) -and
-            ($_.InheritedObjectAceType -eq $expected.InheritedObjectAceType) -and ($_.AccessMask -bor $expected.AccessMask) }
-        }).Count -eq $expectedAuditing.Count
+    $isAuditingOk = @(foreach ($applied in $appliedAuditing) {
+        $expectedAuditing | Where-Object { ($_.SecurityIdentifier -eq $applied.SecurityIdentifier) -and ($_.AuditFlagsValue -eq $applied.AuditFlagsValue) -and
+        ($_.InheritedObjectAceType -eq $applied.InheritedObjectAceType) -and
+            (([System.DirectoryServices.ActiveDirectoryRights]$applied.AccessMask).HasFlag(([System.DirectoryServices.ActiveDirectoryRights]($_.AccessMask)))) }
+    }).Count -eq $expectedAuditing.Count
 
     $return = @{
         isObjectAuditingOk = $isAuditingOk
