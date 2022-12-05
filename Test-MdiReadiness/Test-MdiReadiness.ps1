@@ -204,13 +204,13 @@ function Get-mdiNtlmAuditing {
 
     $expectedRegistrySet = @(
         'System\CurrentControlSet\Control\Lsa\MSV1_0,AuditReceivingNTLMTraffic,2',
-        'System\CurrentControlSet\Control\Lsa\MSV1_0,RestrictSendingNTLMTraffic,1',
+        'System\CurrentControlSet\Control\Lsa\MSV1_0,RestrictSendingNTLMTraffic,1|2',
         'System\CurrentControlSet\Services\Netlogon\Parameters,AuditNTLMInDomain,7'
     )
 
     $details = Get-mdiRegitryValueSet -ComputerName $ComputerName -ExpectedRegistrySet $expectedRegistrySet
     $return = [pscustomobject]@{
-        isNtlmAuditingOk = @($details | Where-Object { $_.value -ne $_.expectedValue }).Count -eq 0
+        isNtlmAuditingOk = @($details | Where-Object { $_.value -notmatch $_.expectedValue }).Count -eq 0
         details          = $details | Select-Object regKey, value
     }
     $return
