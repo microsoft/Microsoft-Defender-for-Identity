@@ -113,7 +113,7 @@ function Get-mdiPowerScheme {
 
     $commandLine = 'cmd.exe /c %windir%\system32\powercfg.exe /getactivescheme'
     $details = Invoke-mdiRemoteCommand -ComputerName $ComputerName -CommandLine $commandLine
-    if ($details -match 'Power Scheme GUID:\s+(?<guid>[a-fA-F0-9]{8}[-]?([a-fA-F0-9]{4}[-]?){3}[a-fA-F0-9]{12})\s+\((?<name>.*)\)') {
+    if ($details -match ':\s+(?<guid>[a-fA-F0-9]{8}[-]?([a-fA-F0-9]{4}[-]?){3}[a-fA-F0-9]{12})\s+\((?<name>.*)\)') {
         $return = [pscustomobject]@{
             isPowerSchemeOk = $Matches.guid -eq '8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c'
             details         = $details
@@ -342,7 +342,8 @@ function Get-mdiMachineType {
                         ErrorAction  = 'SilentlyContinue'
                     }
                     $uuid = (Get-WmiObject @cspParams).UUID
-                    if ($uuid -match '^EC2') { 'AWS' } else { 'Platform' }
+                    if ($uuid -match '^EC2') { 'AWS' }
+                    else { 'Physical' }
                 }
             }
         }
