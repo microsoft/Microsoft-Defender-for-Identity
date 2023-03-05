@@ -24,7 +24,7 @@
         .\Test-MdiReadiness.ps1 -Verbose
 #>
 
-#Requires -Version 5.0
+#Requires -Version 4.0
 #requires -Module ActiveDirectory
 
 [CmdletBinding(SupportsShouldProcess = $true)]
@@ -351,6 +351,39 @@ function Get-mdiMachineType {
 }
 
 
+function Get-mdiOSVersion {
+    param (
+        [Parameter(Mandatory = $true)] [string] $ComputerName
+    )
+    try {
+        $osParams = @{
+            ComputerName = $ComputerName
+            Namespace    = 'root\cimv2'
+            Class        = 'Win32_OperatingSystem'
+            Property     = 'Version', 'Caption'
+            ErrorAction  = 'SilentlyContinue'
+        }
+        $os = Get-WmiObject @osParams
+        $return = [pscustomobject]@{
+            isOsVerOk = [version]($os.Version) -ge [version]('6.3')
+            details   = [pscustomobject]@{
+                Caption = $os.Caption
+                Version = $os.Version
+            }
+        }
+    } catch {
+        $return = [pscustomobject]@{
+            isOsVerOk = $false
+            details   = [pscustomobject]@{
+                Caption = 'N/A'
+                Version = 'N/A'
+            }
+        }
+    }
+    $return
+}
+
+
 function Get-mdiAdvancedAuditing {
     param (
         [Parameter(Mandatory = $true)] [string] $ComputerName
@@ -396,7 +429,7 @@ function Get-mdiDsSacl {
         [Parameter(Mandatory = $true)] [object[]] $ExpectedAuditing
     )
 
-    $searcher = [System.DirectoryServices.DirectorySearcher]::new(([adsi]$LdapPath))
+    $searcher = New-Object -TypeName System.DirectoryServices.DirectorySearcher -ArgumentList ([adsi]$LdapPath)
     $searcher.CacheResults = $false
     $searcher.SearchScope = [System.DirectoryServices.SearchScope]::Base
     $searcher.ReferralChasing = [System.DirectoryServices.ReferralChasingOption]::All
@@ -405,7 +438,7 @@ function Get-mdiDsSacl {
     try {
         $result = ($searcher.FindOne()).Properties
 
-    $appliedAuditing = [Security.AccessControl.RawSecurityDescriptor]::new($result['ntsecuritydescriptor'][0], 0) |
+    $appliedAuditing = New-Object -TypeName Security.AccessControl.RawSecurityDescriptor -ArgumentList ($result['ntsecuritydescriptor'][0], 0) |
         ForEach-Object { $_.SystemAcl } | Select-Object *,
         @{N = 'AccessMaskDetails'; E = { (([Enum]::ToObject([System.DirectoryServices.ActiveDirectoryRights], $_.AccessMask))).ToString() } },
         @{N = 'AuditFlagsValue'; E = { $_.AuditFlags.value__ } },
@@ -530,7 +563,7 @@ function Get-mdiDomainControllerReadiness {
     )
 
     Write-Verbose -Message "Searching for Domain Controllers in $Domain"
-    $dcs = @(Get-ADDomainController -Server $Domain -Filter *  | ForEach-Object {
+    $dcs = @(Get-ADDomainController -Server $Domain -Filter * | ForEach-Object {
             @{
                 FQDN = $_.Hostname
                 IP   = $_.IPv4Address
@@ -582,6 +615,11 @@ function Get-mdiDomainControllerReadiness {
             $machineType = Get-mdiMachineType -ComputerName $dc.FQDN
             $dc.Add('MachineType', $machineType)
 
+            Write-Verbose -Message "Getting Operating System for $($dc.FQDN)"
+            $osVer = Get-mdiOSVersion -ComputerName $dc.FQDN
+            $dc.Add('OSVersion', $osVer.isOsVerOk)
+            $details.Add('OSVersionDetails', $osVer.details)
+
 
         } else {
             $dc.Add('Comment', 'Server is not available')
@@ -621,7 +659,7 @@ li:before { content: "►"; display: block; float: left; width: 1.5em; color: #c
 </style>
 '@
     $properties = [collections.arraylist] @($ReportData.DomainControllers | Get-Member -MemberType NoteProperty |
-            Where-Object { $_.Definition -match '^bool' }).Name
+            Where-Object { $_.Definition -match '(^System.Boolean|^bool)\s+' }).Name
     $properties.Insert(0, 'FQDN')
     $propsToAdd = @('SensorVersion', 'CapturingComponent', 'MachineType', 'Comment')
     [void] $properties.AddRange($propsToAdd)
