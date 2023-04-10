@@ -44,18 +44,24 @@ param (
 function Invoke-mdiRemoteCommand {
     param (
         [Parameter(Mandatory = $true)] [string] $ComputerName,
-        [Parameter(Mandatory = $true)] [string] $CommandLine
+        [Parameter(Mandatory = $true)] [string] $CommandLine,
+        [Parameter(Mandatory = $false)] [string] $LocalFile = $null
     )
 
-    $localFile = 'C:\Windows\Temp\mdi-{0}.tmp' -f [guid]::NewGuid().GUID
     $wmiParams = @{
         ComputerName = $ComputerName
         Namespace    = 'root\cimv2'
         Class        = 'Win32_Process'
         Name         = 'Create'
-        ArgumentList = '{0} 2>&1>{1}' -f $CommandLine, $localFile
         ErrorAction  = 'SilentlyContinue'
     }
+    if ($LocalFile -eq [string]::Empty) {
+        $LocalFile = 'C:\Windows\Temp\mdi-{0}.tmp' -f [guid]::NewGuid().GUID
+        $wmiParams['ArgumentList'] = '{0} 2>&1>{1}' -f $CommandLine, $LocalFile
+    } else {
+        $wmiParams['ArgumentList'] = $CommandLine
+    }
+
     $result = Invoke-WmiMethod @wmiParams
     $maxWait = [datetime]::Now.AddSeconds(15)
 
@@ -73,34 +79,38 @@ function Invoke-mdiRemoteCommand {
 
     try {
         # Read the file using SMB
-        $remoteFile = $localFile -replace 'C:', ('\\{0}\C$' -f $ComputerName)
-        $return = Get-Content -Path $remoteFile
+        $remoteFile = $LocalFile -replace 'C:', ('\\{0}\C$' -f $ComputerName)
+        $return = Get-Content -Path $remoteFile -ErrorAction Stop
         Remove-Item -Path $remoteFile -Force
     } catch {
-        # Read the remote file using WMI
-        $psmClassParams = @{
-            Namespace    = 'root\Microsoft\Windows\Powershellv3'
-            ClassName    = 'PS_ModuleFile'
-            ComputerName = $ComputerName
+        try {
+            # Read the remote file using WMI
+            $psmClassParams = @{
+                Namespace    = 'root\Microsoft\Windows\Powershellv3'
+                ClassName    = 'PS_ModuleFile'
+                ComputerName = $ComputerName
+            }
+            $cimParams = @{
+                CimClass   = Get-CimClass @psmClassParams
+                Property   = @{ InstanceID = $LocalFile }
+                ClientOnly = $true
+            }
+            $fileInstanceParams = @{
+                InputObject  = New-CimInstance @cimParams
+                ComputerName = $ComputerName
+            }
+            $fileContents = Get-CimInstance @fileInstanceParams -ErrorAction Stop
+            $fileLengthBytes = $fileContents.FileData[0..3]
+            [array]::Reverse($fileLengthBytes)
+            $fileLength = [BitConverter]::ToUInt32($fileLengthBytes, 0)
+            $fileBytes = $fileContents.FileData[4..($fileLength - 1)]
+            $localTempFile = [System.IO.Path]::GetTempFileName()
+            Set-Content -Value $fileBytes -Encoding Byte -Path $localTempFile
+            $return = Get-Content -Path $localTempFile
+            Remove-Item -Path $localTempFile -Force
+        } catch {
+            $return = $null
         }
-        $cimParams = @{
-            CimClass   = Get-CimClass @psmClassParams
-            Property   = @{ InstanceID = $localFile }
-            ClientOnly = $true
-        }
-        $fileInstanceParams = @{
-            InputObject  = New-CimInstance @cimParams
-            ComputerName = $ComputerName
-        }
-        $fileContents = Get-CimInstance @fileInstanceParams
-        $fileLengthBytes = $fileContents.FileData[0..3]
-        [array]::Reverse($fileLengthBytes)
-        $fileLength = [BitConverter]::ToUInt32($fileLengthBytes, 0)
-        $fileBytes = $fileContents.FileData[4..($fileLength - 1)]
-        $localTempFile = [System.IO.Path]::GetTempFileName()
-        Set-Content -Value $fileBytes -Encoding Byte -Path $localTempFile
-        $return = Get-Content -Path $localTempFile
-        Remove-Item -Path $localTempFile -Force
     }
     $return
 }
@@ -402,22 +412,29 @@ System,Credential Validation,{0CCE923F-69AE-11D9-BED3-505054503030},Success and 
 '@ | ConvertFrom-Csv
     $properties = ($expectedAuditing | Get-Member -MemberType NoteProperty).Name
 
-    $localTempFile = 'mdi-{0}.csv' -f [guid]::NewGuid().Guid
-    $commandLine = 'cmd.exe /c auditpol.exe /backup /file:%temp%\{0} >NULL && cmd.exe /c type %temp%\{0}' -f $localTempFile
-    $output = Invoke-mdiRemoteCommand -ComputerName $ComputerName -CommandLine $commandLine
-    $advancedAuditing = $output | ConvertFrom-Csv | Where-Object {
-        $_.Subcategory -in $expectedAuditing.Subcategory
-    } | Select-Object -Property $properties
+    $LocalFile = 'C:\Windows\Temp\mdi-{0}.csv' -f [guid]::NewGuid().Guid
+    $commandLine = 'cmd.exe /c auditpol.exe /backup /file:{0}' -f $LocalFile
+    $output = Invoke-mdiRemoteCommand -ComputerName $ComputerName -CommandLine $commandLine -LocalFile $LocalFile
+    if ($output) {
+        $advancedAuditing = $output | ConvertFrom-Csv | Where-Object {
+            $_.Subcategory -in $expectedAuditing.Subcategory
+        } | Select-Object -Property $properties
 
-    $compareParams = @{
-        ReferenceObject  = $expectedAuditing
-        DifferenceObject = $advancedAuditing
-        Property         = $properties
-    }
-    $isAdvancedAuditingOk = $null -eq (Compare-Object @compareParams)
-    $return = [pscustomobject]@{
-        isAdvancedAuditingOk = $isAdvancedAuditingOk
-        details              = $advancedAuditing
+        $compareParams = @{
+            ReferenceObject  = $expectedAuditing
+            DifferenceObject = $advancedAuditing
+            Property         = $properties
+        }
+        $isAdvancedAuditingOk = $null -eq (Compare-Object @compareParams)
+        $return = [pscustomobject]@{
+            isAdvancedAuditingOk = $isAdvancedAuditingOk
+            details              = $advancedAuditing
+        }
+    } else {
+        $return = [pscustomobject]@{
+            isAdvancedAuditingOk = $false
+            details              = 'Unable to get the advanced auditing settings remotely'
+        }
     }
     $return
 }
@@ -438,11 +455,11 @@ function Get-mdiDsSacl {
     try {
         $result = ($searcher.FindOne()).Properties
 
-    $appliedAuditing = New-Object -TypeName Security.AccessControl.RawSecurityDescriptor -ArgumentList ($result['ntsecuritydescriptor'][0], 0) |
-        ForEach-Object { $_.SystemAcl } | Select-Object *,
-        @{N = 'AccessMaskDetails'; E = { (([Enum]::ToObject([System.DirectoryServices.ActiveDirectoryRights], $_.AccessMask))).ToString() } },
-        @{N = 'AuditFlagsValue'; E = { $_.AuditFlags.value__ } },
-        @{N = 'AceFlagsValue'; E = { $_.AceFlags.value__ } }
+        $appliedAuditing = New-Object -TypeName Security.AccessControl.RawSecurityDescriptor -ArgumentList ($result['ntsecuritydescriptor'][0], 0) |
+            ForEach-Object { $_.SystemAcl } | Select-Object *,
+            @{N = 'AccessMaskDetails'; E = { (([Enum]::ToObject([System.DirectoryServices.ActiveDirectoryRights], $_.AccessMask))).ToString() } },
+            @{N = 'AuditFlagsValue'; E = { $_.AuditFlags.value__ } },
+            @{N = 'AceFlagsValue'; E = { $_.AceFlags.value__ } }
 
 
         $properties = ($expectedAuditing | Get-Member -MemberType NoteProperty).Name
@@ -490,10 +507,10 @@ S-1-1-0,852075,1,7b8b558a-93a5-4af7-adca-c017e67f1057,Descendant msDS-GroupManag
     $appliedAuditing = $result.details
 
     $isAuditingOk = @(foreach ($applied in $appliedAuditing) {
-        $expectedAuditing | Where-Object { ($_.SecurityIdentifier -eq $applied.SecurityIdentifier) -and ($_.AuditFlagsValue -eq $applied.AuditFlagsValue) -and
+            $expectedAuditing | Where-Object { ($_.SecurityIdentifier -eq $applied.SecurityIdentifier) -and ($_.AuditFlagsValue -eq $applied.AuditFlagsValue) -and
         ($_.InheritedObjectAceType -eq $applied.InheritedObjectAceType) -and
             (([System.DirectoryServices.ActiveDirectoryRights]$applied.AccessMask).HasFlag(([System.DirectoryServices.ActiveDirectoryRights]($_.AccessMask)))) }
-    }).Count -eq $expectedAuditing.Count
+        }).Count -eq $expectedAuditing.Count
 
     $return = @{
         isObjectAuditingOk = $isAuditingOk
@@ -556,7 +573,7 @@ S-1-1-0,48,3,194
 
 
 function Get-DomainSchemaVersion {
-    [CmdletBinding(SupportsShouldProcess = $true)]
+    [CmdletBinding(SupportsShouldProcess = $false)]
     param (
         [Parameter(Mandatory = $true)] [string] $Domain
     )
