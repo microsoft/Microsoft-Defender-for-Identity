@@ -564,8 +564,16 @@ S-1-1-0,48,3,194
     $ldapPath = 'LDAP://CN=ADFS,CN=Microsoft,CN=Program Data,{0}' -f $ds.defaultNamingContext.Value
 
     $result = Get-mdiDsSacl -LdapPath $ldapPath -ExpectedAuditing $expectedAuditing
+    $appliedAuditing = $result.details
+
+    $isAuditingOk = @(foreach ($applied in $appliedAuditing) {
+            $expectedAuditing | Where-Object { ($_.SecurityIdentifier -eq $applied.SecurityIdentifier) -and ($_.AuditFlagsValue -eq $applied.AuditFlagsValue) -and
+        ($_.InheritedObjectAceType -eq $applied.InheritedObjectAceType) -and
+            (([System.DirectoryServices.ActiveDirectoryRights]$applied.AccessMask).HasFlag(([System.DirectoryServices.ActiveDirectoryRights]($_.AccessMask)))) }
+        }).Count -eq @($expectedAuditing).Count
+
     $return = @{
-        isAdfsAuditingOk = $result.isAuditingOk
+        isAdfsAuditingOk = $isAuditingOk
         details          = $result.details
     }
     $return
