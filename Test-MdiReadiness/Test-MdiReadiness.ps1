@@ -48,69 +48,73 @@ function Invoke-mdiRemoteCommand {
         [Parameter(Mandatory = $false)] [string] $LocalFile = $null
     )
 
-    $wmiParams = @{
-        ComputerName = $ComputerName
-        Namespace    = 'root\cimv2'
-        Class        = 'Win32_Process'
-        Name         = 'Create'
-        ErrorAction  = 'SilentlyContinue'
-    }
-    if ($LocalFile -eq [string]::Empty) {
-        $LocalFile = 'C:\Windows\Temp\mdi-{0}.tmp' -f [guid]::NewGuid().GUID
-        $wmiParams['ArgumentList'] = '{0} 2>&1>{1}' -f $CommandLine, $LocalFile
-    } else {
-        $wmiParams['ArgumentList'] = $CommandLine
-    }
-
-    $result = Invoke-WmiMethod @wmiParams
-    $maxWait = [datetime]::Now.AddSeconds(15)
-
-    $waitForProcessParams = @{
-        ComputerName = $ComputerName
-        Namespace    = 'root\cimv2'
-        Class        = 'Win32_Process'
-        Filter       = ("ProcessId='{0}'" -f $result.ProcessId)
-    }
-
-    if ($result.ReturnValue -eq 0) {
-        do { Start-Sleep -Milliseconds 200 }
-        while (([datetime]::Now -lt $maxWait) -and (Get-WmiObject @waitForProcessParams).CommandLine -eq $wmiParams.ArgumentList)
-    }
-
     try {
-        # Read the file using SMB
-        $remoteFile = $LocalFile -replace 'C:', ('\\{0}\C$' -f $ComputerName)
-        $return = Get-Content -Path $remoteFile -ErrorAction Stop
-        Remove-Item -Path $remoteFile -Force
-    } catch {
-        try {
-            # Read the remote file using WMI
-            $psmClassParams = @{
-                Namespace    = 'root\Microsoft\Windows\Powershellv3'
-                ClassName    = 'PS_ModuleFile'
-                ComputerName = $ComputerName
-            }
-            $cimParams = @{
-                CimClass   = Get-CimClass @psmClassParams
-                Property   = @{ InstanceID = $LocalFile }
-                ClientOnly = $true
-            }
-            $fileInstanceParams = @{
-                InputObject  = New-CimInstance @cimParams
-                ComputerName = $ComputerName
-            }
-            $fileContents = Get-CimInstance @fileInstanceParams -ErrorAction Stop
-            $fileLengthBytes = $fileContents.FileData[0..3]
-            [array]::Reverse($fileLengthBytes)
-            $fileLength = [BitConverter]::ToUInt32($fileLengthBytes, 0)
-            $fileBytes = $fileContents.FileData[4..($fileLength - 1)]
-            $localTempFile = [System.IO.Path]::GetTempFileName()
-            Set-Content -Value $fileBytes -Encoding Byte -Path $localTempFile
-            $return = Get-Content -Path $localTempFile
-            Remove-Item -Path $localTempFile -Force
-        } catch {
-            $return = $null
+        $wmiParams = @{
+            ComputerName = $ComputerName
+            Namespace    = 'root\cimv2'
+            Class        = 'Win32_Process'
+            Name         = 'Create'
+            ErrorAction  = 'SilentlyContinue'
         }
+        if ($LocalFile -eq [string]::Empty) {
+            $LocalFile = 'C:\Windows\Temp\mdi-{0}.tmp' -f [guid]::NewGuid().GUID
+            $wmiParams['ArgumentList'] = '{0} 2>&1>{1}' -f $CommandLine, $LocalFile
+        } else {
+            $wmiParams['ArgumentList'] = $CommandLine
+        }
+
+        $result = Invoke-WmiMethod @wmiParams
+        $maxWait = [datetime]::Now.AddSeconds(15)
+
+        $waitForProcessParams = @{
+            ComputerName = $ComputerName
+            Namespace    = 'root\cimv2'
+            Class        = 'Win32_Process'
+            Filter       = ("ProcessId='{0}'" -f $result.ProcessId)
+        }
+
+        if ($result.ReturnValue -eq 0) {
+            do { Start-Sleep -Milliseconds 200 }
+            while (([datetime]::Now -lt $maxWait) -and (Get-WmiObject @waitForProcessParams).CommandLine -eq $wmiParams.ArgumentList)
+        }
+
+        try {
+            # Read the file using SMB
+            $remoteFile = $LocalFile -replace 'C:', ('\\{0}\C$' -f $ComputerName)
+            $return = Get-Content -Path $remoteFile -ErrorAction Stop
+            Remove-Item -Path $remoteFile -Force
+        } catch {
+            try {
+                # Read the remote file using WMI
+                $psmClassParams = @{
+                    Namespace    = 'root\Microsoft\Windows\Powershellv3'
+                    ClassName    = 'PS_ModuleFile'
+                    ComputerName = $ComputerName
+                }
+                $cimParams = @{
+                    CimClass   = Get-CimClass @psmClassParams
+                    Property   = @{ InstanceID = $LocalFile }
+                    ClientOnly = $true
+                }
+                $fileInstanceParams = @{
+                    InputObject  = New-CimInstance @cimParams
+                    ComputerName = $ComputerName
+                }
+                $fileContents = Get-CimInstance @fileInstanceParams -ErrorAction Stop
+                $fileLengthBytes = $fileContents.FileData[0..3]
+                [array]::Reverse($fileLengthBytes)
+                $fileLength = [BitConverter]::ToUInt32($fileLengthBytes, 0)
+                $fileBytes = $fileContents.FileData[4..($fileLength - 1)]
+                $localTempFile = [System.IO.Path]::GetTempFileName()
+                Set-Content -Value $fileBytes -Encoding Byte -Path $localTempFile
+                $return = Get-Content -Path $localTempFile
+                Remove-Item -Path $localTempFile -Force
+            } catch {
+                $return = $null
+            }
+        }
+    } catch {
+        $return = $_.Exception.Message
     }
     $return
 }
@@ -142,47 +146,62 @@ function Get-mdiServerRequirements {
     param (
         [Parameter(Mandatory = $true)] [string] $ComputerName
     )
-    $csiParams = @{
-        ComputerName = $ComputerName
-        Namespace    = 'root\cimv2'
-        Class        = 'Win32_ComputerSystem'
-        Property     = 'NumberOfLogicalProcessors', 'TotalPhysicalMemory'
-        ErrorAction  = 'SilentlyContinue'
-    }
-    $csi = Get-WmiObject @csiParams
+    try {
+        $csiParams = @{
+            ComputerName = $ComputerName
+            Namespace    = 'root\cimv2'
+            Class        = 'Win32_ComputerSystem'
+            Property     = 'NumberOfLogicalProcessors', 'TotalPhysicalMemory'
+            ErrorAction  = 'SilentlyContinue'
+        }
+        $csi = Get-WmiObject @csiParams
 
-    $osParams = @{
-        ComputerName = $ComputerName
-        Namespace    = 'root\cimv2'
-        Class        = 'Win32_OperatingSystem'
-        Property     = 'SystemDrive'
-        ErrorAction  = 'SilentlyContinue'
-    }
-    $osdiskParams = @{
-        ComputerName = $ComputerName
-        Namespace    = 'root\cimv2'
-        Class        = 'Win32_LogicalDisk'
-        Property     = 'FreeSpace', 'DeviceID'
-        Filter       = "DeviceID = '{0}'" -f (Get-WmiObject @osParams).SystemDrive
-        ErrorAction  = 'SilentlyContinue'
-    }
-    $osdisk = Get-WmiObject @osdiskParams
+        $osParams = @{
+            ComputerName = $ComputerName
+            Namespace    = 'root\cimv2'
+            Class        = 'Win32_OperatingSystem'
+            Property     = 'SystemDrive'
+            ErrorAction  = 'SilentlyContinue'
+        }
+        $osdiskParams = @{
+            ComputerName = $ComputerName
+            Namespace    = 'root\cimv2'
+            Class        = 'Win32_LogicalDisk'
+            Property     = 'FreeSpace', 'DeviceID'
+            Filter       = "DeviceID = '{0}'" -f (Get-WmiObject @osParams).SystemDrive
+            ErrorAction  = 'SilentlyContinue'
+        }
+        $osdisk = Get-WmiObject @osdiskParams
 
-
-    $return = [pscustomobject]@{
-        isMinHwRequirementsOk = ($csi.NumberOfLogicalProcessors -ge 2) -and ($csi.TotalPhysicalMemory -ge 6gb) -and ($osdisk.FreeSpace -ge 6gb)
-        details               = [pscustomobject]@{
-            NumberOfLogicalProcessors = $csi.NumberOfLogicalProcessors
-            TotalPhysicalMemory       = $csi.TotalPhysicalMemory
-            OsDiskDeviceID            = $osdisk.DeviceID
-            OsDiskFreeSpace           = $osdisk.FreeSpace
+        $minRequirements = @{
+            NumberOfLogicalProcessors = 2
+            TotalPhysicalMemory       = 6gb - 1mb
+            OsDiskFreeSpace           = 6gb
+        }
+        $return = [pscustomobject]@{
+            isMinHwRequirementsOk = (
+                $csi.NumberOfLogicalProcessors -ge $minRequirements.NumberOfLogicalProcessors -and
+                $csi.TotalPhysicalMemory -ge $minRequirements.TotalPhysicalMemory -and
+                $osdisk.FreeSpace -ge $minRequirements.OsDiskFreeSpace
+            )
+            details               = [pscustomobject]@{
+                NumberOfLogicalProcessors = $csi.NumberOfLogicalProcessors
+                TotalPhysicalMemory       = $csi.TotalPhysicalMemory
+                OsDiskDeviceID            = $osdisk.DeviceID
+                OsDiskFreeSpace           = $osdisk.FreeSpace
+            }
+        }
+    } catch {
+        $return = [pscustomobject]@{
+            isMinHwRequirementsOk = $false
+            details               = $_.Exception.Message
         }
     }
     $return
 }
 
 
-function Get-mdiRegitryValueSet {
+function Get-mdiRegistryValueSet {
     param (
         [Parameter(Mandatory = $true)] [string] $ComputerName,
         [Parameter(Mandatory = $true)] [string[]] $ExpectedRegistrySet
@@ -218,7 +237,7 @@ function Get-mdiNtlmAuditing {
         'System\CurrentControlSet\Services\Netlogon\Parameters,AuditNTLMInDomain,7'
     )
 
-    $details = Get-mdiRegitryValueSet -ComputerName $ComputerName -ExpectedRegistrySet $expectedRegistrySet
+    $details = Get-mdiRegistryValueSet -ComputerName $ComputerName -ExpectedRegistrySet $expectedRegistrySet
     $return = [pscustomobject]@{
         isNtlmAuditingOk = @($details | Where-Object { $_.value -notmatch $_.expectedValue }).Count -eq 0
         details          = $details | Select-Object regKey, value
@@ -307,7 +326,7 @@ function Get-mdiSensorVersion {
             $return = 'N/A'
         }
     } catch {
-        $return = 'N/A'
+        $return = $_.Exception.Message
     }
     $return
 }
@@ -317,47 +336,52 @@ function Get-mdiMachineType {
     param (
         [Parameter(Mandatory = $true)] [string] $ComputerName
     )
-    $csiParams = @{
-        ComputerName = $ComputerName
-        Namespace    = 'root\cimv2'
-        Class        = 'Win32_ComputerSystem'
-        Property     = 'Model', 'Manufacturer'
-        ErrorAction  = 'SilentlyContinue'
-    }
-    $csi = Get-WmiObject @csiParams
-    switch ($csi.Model) {
-        { $_ -eq 'Virtual Machine' } { 'Hyper-V'; break }
-        { $_ -match 'VMware|VirtualBox' } { $_; break }
-        default {
-            switch ($csi.Manufacturer) {
-                { $_ -match 'Xen|Google' } { $_; break }
-                { $_ -match 'QEMU' } { 'KVM'; break }
-                { $_ -eq 'Microsoft Corporation' } {
-                    $azgaParams = @{
-                        ComputerName = $ComputerName
-                        Namespace    = 'root\cimv2'
-                        Class        = 'Win32_Service'
-                        Filter       = "Name = 'WindowsAzureGuestAgent'"
-                        ErrorAction  = 'SilentlyContinue'
+    try {
+        $csiParams = @{
+            ComputerName = $ComputerName
+            Namespace    = 'root\cimv2'
+            Class        = 'Win32_ComputerSystem'
+            Property     = 'Model', 'Manufacturer'
+            ErrorAction  = 'SilentlyContinue'
+        }
+        $csi = Get-WmiObject @csiParams
+        $return = switch ($csi.Model) {
+            { $_ -eq 'Virtual Machine' } { 'Hyper-V'; break }
+            { $_ -match 'VMware|VirtualBox' } { $_; break }
+            default {
+                switch ($csi.Manufacturer) {
+                    { $_ -match 'Xen|Google' } { $_; break }
+                    { $_ -match 'QEMU' } { 'KVM'; break }
+                    { $_ -eq 'Microsoft Corporation' } {
+                        $azgaParams = @{
+                            ComputerName = $ComputerName
+                            Namespace    = 'root\cimv2'
+                            Class        = 'Win32_Service'
+                            Filter       = "Name = 'WindowsAzureGuestAgent'"
+                            ErrorAction  = 'SilentlyContinue'
+                        }
+                        if (Get-WmiObject @azgaParams) { 'Azure' } else { 'Hyper-V' }
+                        break
                     }
-                    if (Get-WmiObject @azgaParams) { 'Azure' } else { 'Hyper-V' }
-                    break
-                }
-                default {
-                    $cspParams = @{
-                        ComputerName = $ComputerName
-                        Namespace    = 'root\cimv2'
-                        Class        = 'Win32_ComputerSystemProduct'
-                        Property     = 'uuid'
-                        ErrorAction  = 'SilentlyContinue'
+                    default {
+                        $cspParams = @{
+                            ComputerName = $ComputerName
+                            Namespace    = 'root\cimv2'
+                            Class        = 'Win32_ComputerSystemProduct'
+                            Property     = 'uuid'
+                            ErrorAction  = 'SilentlyContinue'
+                        }
+                        $uuid = (Get-WmiObject @cspParams).UUID
+                        if ($uuid -match '^EC2') { 'AWS' }
+                        else { 'Physical' }
                     }
-                    $uuid = (Get-WmiObject @cspParams).UUID
-                    if ($uuid -match '^EC2') { 'AWS' }
-                    else { 'Physical' }
                 }
             }
         }
+    } catch {
+        $return = $_.Exception.Message
     }
+    $return
 }
 
 
@@ -415,7 +439,7 @@ System,Credential Validation,{0CCE923F-69AE-11D9-BED3-505054503030},Success and 
     $LocalFile = 'C:\Windows\Temp\mdi-{0}.csv' -f [guid]::NewGuid().Guid
     $commandLine = 'cmd.exe /c auditpol.exe /backup /file:{0}' -f $LocalFile
     $output = Invoke-mdiRemoteCommand -ComputerName $ComputerName -CommandLine $commandLine -LocalFile $LocalFile
-    if ($output) {
+    if ($output -and $output.Count -gt 1) {
         $advancedAuditing = $output | ConvertFrom-Csv | Where-Object {
             $_.Subcategory -in $expectedAuditing.Subcategory
         } | Select-Object -Property $properties
@@ -535,23 +559,35 @@ S-1-1-0,32,3,194
 '@ | ConvertFrom-Csv
 
     $ds = [adsi]('LDAP://{0}/ROOTDSE' -f $Domain)
-    $ldapPath = 'LDAP://CN=Configuration,{0}' -f $ds.defaultNamingContext.Value
 
-    $result = Get-mdiDsSacl -LdapPath $ldapPath -ExpectedAuditing $expectedAuditing
-    $appliedAuditing = $result.details
+    $exchangePath = 'LDAP://CN=Microsoft Exchange,CN=Services,CN=Configuration,{0}' -f $ds.defaultNamingContext.Value
+    if ([System.DirectoryServices.DirectoryEntry]::Exists($exchangePath)) {
 
-    $isAuditingOk = @(foreach ($applied in $appliedAuditing) {
-            $expectedAuditing | Where-Object { ($_.SecurityIdentifier -eq $applied.SecurityIdentifier) -and ($_.AuditFlagsValue -eq $applied.AuditFlagsValue) -and
-        ($_.InheritedObjectAceType -eq $applied.InheritedObjectAceType) -and
-            (([System.DirectoryServices.ActiveDirectoryRights]$applied.AccessMask).HasFlag(([System.DirectoryServices.ActiveDirectoryRights]($_.AccessMask)))) }
-        }).Count -eq @($expectedAuditing).Count
+        $ldapPath = 'LDAP://CN=Configuration,{0}' -f $ds.defaultNamingContext.Value
 
-    $return = @{
-        isExchangeAuditingOk = $isAuditingOk
-        details              = $result.details
+        $result = Get-mdiDsSacl -LdapPath $ldapPath -ExpectedAuditing $expectedAuditing
+
+        if ($result.isAuditingOk -eq 'N/A') {
+            $isAuditingOk = $result.isAuditingOk
+        } else {
+            $appliedAuditing = $result.details
+            $isAuditingOk = @(foreach ($applied in $appliedAuditing) {
+                    $expectedAuditing | Where-Object { ($_.SecurityIdentifier -eq $applied.SecurityIdentifier) -and ($_.AuditFlagsValue -eq $applied.AuditFlagsValue) -and
+                ($_.InheritedObjectAceType -eq $applied.InheritedObjectAceType) -and
+                    (([System.DirectoryServices.ActiveDirectoryRights]$applied.AccessMask).HasFlag(([System.DirectoryServices.ActiveDirectoryRights]($_.AccessMask)))) }
+                }).Count -eq @($expectedAuditing).Count
+        }
+        $return = @{
+            isExchangeAuditingOk = $isAuditingOk
+            details              = $result.details
+        }
+    } else {
+        $return = @{
+            isExchangeAuditingOk = 'N/A'
+            details              = 'Microsoft Exchange Services Configuration container not found'
+        }
     }
     $return
-
 }
 
 
@@ -572,17 +608,23 @@ S-1-1-0,48,3,194
     $ldapPath = 'LDAP://CN=ADFS,CN=Microsoft,CN=Program Data,{0}' -f $ds.defaultNamingContext.Value
 
     $result = Get-mdiDsSacl -LdapPath $ldapPath -ExpectedAuditing $expectedAuditing
-    $appliedAuditing = $result.details
 
-    $isAuditingOk = @(foreach ($applied in $appliedAuditing) {
-            $expectedAuditing | Where-Object { ($_.SecurityIdentifier -eq $applied.SecurityIdentifier) -and ($_.AuditFlagsValue -eq $applied.AuditFlagsValue) -and
-        ($_.InheritedObjectAceType -eq $applied.InheritedObjectAceType) -and
-            (([System.DirectoryServices.ActiveDirectoryRights]$applied.AccessMask).HasFlag(([System.DirectoryServices.ActiveDirectoryRights]($_.AccessMask)))) }
-        }).Count -eq @($expectedAuditing).Count
-
-    $return = @{
-        isAdfsAuditingOk = $isAuditingOk
-        details          = $result.details
+    if ($result.isAuditingOk -ne 'N/A') {
+        $appliedAuditing = $result.details
+        $isAuditingOk = @(foreach ($applied in $appliedAuditing) {
+                $expectedAuditing | Where-Object { ($_.SecurityIdentifier -eq $applied.SecurityIdentifier) -and ($_.AuditFlagsValue -eq $applied.AuditFlagsValue) -and
+            ($_.InheritedObjectAceType -eq $applied.InheritedObjectAceType) -and
+                (([System.DirectoryServices.ActiveDirectoryRights]$applied.AccessMask).HasFlag(([System.DirectoryServices.ActiveDirectoryRights]($_.AccessMask)))) }
+            }).Count -eq @($expectedAuditing).Count
+        $return = @{
+            isAdfsAuditingOk = $isAuditingOk
+            details          = $result.details
+        }
+    } else {
+        $return = @{
+            isAdfsAuditingOk = $result.isAuditingOk
+            details          = 'Microsoft ADFS Program Data container not found'
+        }
     }
     $return
 }
@@ -786,9 +828,9 @@ function Test-mdiReadinessResult {
             }) -ne $true).Count -eq 0
 
     $return = $dcsOk -and
-        $report.DomainAdfsAuditing.isAdfsAuditingOk -and
-            $report.DomainObjectAuditing.isObjectAuditingOk -and
-                $report.DomainExchangeAuditing.isExchangeAuditingOk
+    $report.DomainAdfsAuditing.isAdfsAuditingOk -and
+    $report.DomainObjectAuditing.isObjectAuditingOk -and
+    $report.DomainExchangeAuditing.isExchangeAuditingOk
 
     $return
 }
