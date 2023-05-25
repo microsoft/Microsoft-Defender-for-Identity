@@ -1,6 +1,8 @@
 # Microsoft-Defender-for-Identity
 
 This repository contains scripts, code examples and additional resources to improve customer experience with Microsoft Defender for Identity.
+If you have an issue with Microsoft Defender for Identity, please open a support ticket.
+For questions and feedback, please contact <mdifeedback@microsoft.com>
 
 ## Contributing
 
