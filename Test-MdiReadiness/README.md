@@ -35,7 +35,7 @@ DESCRIPTION
     This script will query your domain and report if the different Microsoft Defender for Identity prerequisites are in place. It creates an html report and a detailed json file with all the collected data.
 
 SYNTAX
-    .\Test-MdiReadiness.ps1 [[-Path] <String>] [[-Domain] <String>] [-OpenHtmlReport] [-WhatIf] [-Confirm] [<CommonParameters>]
+    .\Test-MdiReadiness.ps1 [[-Path] <String>] [[-Domain] <String>] [[-CAServers] <String[]>] [-OpenHtmlReport] [-WhatIf] [-Confirm] [<CommonParameters>]
 
 PARAMETERS
     -Path <String>
@@ -56,7 +56,7 @@ PARAMETERS
         Accept pipeline input?       false
         Accept wildcard characters?  false
 
-    -CAServers <String>
+    -CAServers <String[]>
         Specific CA servers to work against. Defaults to the members of the "Cert Publishers" group
 
         Required?                    false
