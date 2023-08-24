@@ -771,7 +771,11 @@ function Get-mdiCAReadiness {
 
     if ([string]::IsNullOrEmpty($CAServers)) {
         Write-Verbose -Message "Searching for CA servers in $Domain"
-        $CAServers = Get-ADGroupMember -Server $Domain -Identity 'Cert Publishers' | Where-Object { $_.objectClass -eq 'computer' }
+        try {
+            $CAServers = Get-ADGroupMember -Server $Domain -Identity 'Cert Publishers' -ErrorAction Stop | Where-Object { $_.objectClass -eq 'computer' }
+        } catch {
+            $CAServers = $null
+        }
     } else {
         Write-Verbose -Message "Using the provided list of CA server(s)"
     }
@@ -884,18 +888,21 @@ li:before { content: "►"; display: block; float: left; width: 1.5em; color: #c
         -replace '<td>False', '<td class="red">False' `
         -join [environment]::NewLine
 
-    $properties = [collections.arraylist] @($ReportData.CAServers | Get-Member -MemberType NoteProperty |
-            Where-Object { $_.Definition -match '(^System.Boolean|^bool)\s+' }).Name
-    $properties.Insert(0, 'FQDN')
-    $propsToAdd = @('SensorVersion', 'CapturingComponent', 'MachineType', 'Comment')
-    [void] $properties.AddRange($propsToAdd)
-    $regReplacePattern = '<th>(?!FQDN)(?!{0})(\w+)' -f ($propsToAdd -join '|')
-    $htmlCAs = ((($ReportData.CAServers | Sort-Object FQDN | Select-Object $properties | ConvertTo-Html -Fragment) `
+    $htmlCAs = if ($ReportData.CAServers) {
+        $properties = [collections.arraylist] @($ReportData.CAServers | Get-Member -MemberType NoteProperty |
+                Where-Object { $_.Definition -match '(^System.Boolean|^bool)\s+' }).Name
+        $properties.Insert(0, 'FQDN')
+        $propsToAdd = @('SensorVersion', 'CapturingComponent', 'MachineType', 'Comment')
+        [void] $properties.AddRange($propsToAdd)
+        $regReplacePattern = '<th>(?!FQDN)(?!{0})(\w+)' -f ($propsToAdd -join '|')
+        ((($ReportData.CAServers | Sort-Object FQDN | Select-Object $properties | ConvertTo-Html -Fragment) `
                 -replace $regReplacePattern, '<th><a href="https://aka.ms/mdi/$1">$1</a>') `
             -replace '<td>True', '<td class="green">True') `
-        -replace '<td>False', '<td class="red">False' `
-        -join [environment]::NewLine
-
+            -replace '<td>False', '<td class="red">False' `
+            -join [environment]::NewLine
+    } else {
+        '<table><tr><td>No CA servers found</td></tr></table>'
+    }
 
     $htmlDS = ((($ReportData | Select-Object @{N = 'Domain'; E = { $Domain } },
                 @{N = 'ObjectAuditing'; E = { $_.DomainObjectAuditing.isObjectAuditingOk } },
@@ -948,7 +955,13 @@ function Test-mdiReadinessResult {
                 }
             }) -ne $true).Count -eq 0
 
-    $return = $dcsOk -and
+    $casOk = (($ReportData.CAServers | ForEach-Object {
+                $ca = $_; $properties | ForEach-Object {
+                    $ca | Select-Object -ExpandProperty $_ -ErrorAction SilentlyContinue
+                }
+            }) -ne $true).Count -eq 0
+
+    $return = $dcsOk -and $casOk -and
     $report.DomainAdfsAuditing.isAdfsAuditingOk -and
     $report.DomainObjectAuditing.isObjectAuditingOk -and
     $report.DomainExchangeAuditing.isExchangeAuditingOk
