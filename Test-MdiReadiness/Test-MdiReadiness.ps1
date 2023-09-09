@@ -13,15 +13,21 @@
     .DESCRIPTION
         This script will query your domain and report if the different Microsoft Defender for Identity prerequisites are in place. It creates an html report and a detailed json file with all the collected data.
     .PARAMETER Path
-        Path to a folder where the reports are be saved
+        Path to a folder where the reports are be saved. Defaults to the current folder.
     .PARAMETER Domain
-        Domain Name or FQDN to work against. Defaults to current domain
+        Domain Name or FQDN to work against. Defaults to the current domain.
+    .PARAMETER DomainController
+        Specific Domain Controller(s) to work against. If not specified, it will query AD for the list of DCs in the domain.
+    .PARAMETER CAServer
+        Specific Certificate Authority server(s) to work against. If not specified, it will query AD for the members of the "Cert Publishers" group.
     .PARAMETER OpenHtmlReport
-        Open the HTML report at the end of the collection process
+        Open the HTML report at the end of the collection process.
     .EXAMPLE
         .\Test-MdiReadiness.ps1 -OpenHtmlReport
     .EXAMPLE
-        .\Test-MdiReadiness.ps1 -CAServers 'myCA01', 'myCA02'
+        .\Test-MdiReadiness.ps1 -DomainController 'myDC01', 'myDC02'
+    .EXAMPLE
+        .\Test-MdiReadiness.ps1 -CAServer 'myCA01', 'myCA02'
     .EXAMPLE
         .\Test-MdiReadiness.ps1 -Verbose
 #>
@@ -35,8 +41,10 @@ param (
     [string] $Path = '.',
     [Parameter(Mandatory = $false, HelpMessage = 'Domain Name or FQDN to work against. Defaults to current domain')]
     [string] $Domain = $null,
-    [Parameter(Mandatory = $false, HelpMessage = 'Specific CA servers to work against. Defaults to the members of the "Cert Publishers" group')]
-    [string[]] $CAServers = $null,
+    [Parameter(Mandatory = $false, HelpMessage = 'Specific Domain Controller(s) to work against. If not specified, it will query AD for the list of DCs in the domain')]
+    [string[]] [Alias('DC')] $DomainController = $null,
+    [Parameter(Mandatory = $false, HelpMessage = 'Specific Certificate Authority server(s) to work against. If not specified, it will query AD for the members of the "Cert Publishers" group')]
+    [string[]] [Alias('CA')] $CAServer = $null,
     [Parameter(Mandatory = $false, HelpMessage = 'Open the HTML report at the end of the collection process')]
     [switch] $OpenHtmlReport
 )
@@ -690,15 +698,30 @@ function Get-DomainSchemaVersion {
 function Get-mdiDomainControllerReadiness {
     [CmdletBinding(SupportsShouldProcess = $true)]
     param(
-        [Parameter(Mandatory = $true)] [string] $Domain
+        [Parameter(Mandatory = $true)] [string] $Domain,
+        [Parameter(Mandatory = $false)] [string[]] $DomainController = $null
     )
 
-    Write-Verbose -Message "Searching for Domain Controllers in $Domain"
-    $dcs = @(Get-ADDomainController -Server $Domain -Filter * | ForEach-Object {
-            @{
-                FQDN = $_.Hostname
-                IP   = $_.IPv4Address
-                OS   = $_.OperatingSystem
+    if ([string]::IsNullOrEmpty($DomainController)) {
+        Write-Verbose -Message "Searching for Domain Controllers in $Domain"
+        try {
+            $DomainController = @(Get-ADDomainController -Server $Domain -Filter * -ErrorAction Stop | Select-Object -ExpandProperty Name)
+        } catch {
+            $DomainController = $null
+        }
+    } else {
+        Write-Verbose -Message "Using the provided list of Domain Controller(s)"
+    }
+    $dcs = @($DomainController | ForEach-Object {
+            try {
+                $dcComputer = Get-ADComputer -Identity $_ -Server $Domain -Properties DNSHostName, IPv4Address, OperatingSystem -ErrorAction SilentlyContinue
+                @{
+                    FQDN = $dcComputer.DNSHostName
+                    IP   = $dcComputer.IPv4Address
+                    OS   = $dcComputer.OperatingSystem
+                }
+            } catch {
+                Write-Verbose $_.Exception.Message
             }
         })
     Write-Verbose -Message "Found $($dcs.Count) Domain Controller(s)"
@@ -766,20 +789,20 @@ function Get-mdiCAReadiness {
     [CmdletBinding(SupportsShouldProcess = $true)]
     param(
         [Parameter(Mandatory = $true)] [string] $Domain,
-        [Parameter(Mandatory = $false)] [string[]] $CAServers = $null
+        [Parameter(Mandatory = $false)] [string[]] $CAServer = $null
     )
 
-    if ([string]::IsNullOrEmpty($CAServers)) {
+    if ([string]::IsNullOrEmpty($CAServer)) {
         Write-Verbose -Message "Searching for CA servers in $Domain"
         try {
-            $CAServers = Get-ADGroupMember -Server $Domain -Identity 'Cert Publishers' -ErrorAction Stop | Where-Object { $_.objectClass -eq 'computer' }
+            $CAServer = Get-ADGroupMember -Server $Domain -Identity 'Cert Publishers' -ErrorAction Stop | Where-Object { $_.objectClass -eq 'computer' }
         } catch {
-            $CAServers = $null
+            $CAServer = $null
         }
     } else {
         Write-Verbose -Message "Using the provided list of CA server(s)"
     }
-    $cas = @($CAServers | ForEach-Object {
+    $cas = @($CAServer | ForEach-Object {
             try {
                 $caComputer = Get-ADComputer -Identity $_ -Server $Domain -Properties DNSHostName, IPv4Address, OperatingSystem -ErrorAction SilentlyContinue
                 @{
@@ -977,8 +1000,8 @@ if (-not $Domain) { $Domain = $env:USERDNSDOMAIN }
 if ($PSCmdlet.ShouldProcess($Domain, 'Create MDI related configuration reports')) {
     $report = @{
         Domain                 = $Domain
-        DomainControllers      = Get-mdiDomainControllerReadiness -Domain $Domain
-        CAServers              = Get-mdiCAReadiness -Domain $Domain -CAServers $CAServers
+        DomainControllers      = Get-mdiDomainControllerReadiness -Domain $Domain -DomainController $DomainController
+        CAServers              = Get-mdiCAReadiness -Domain $Domain -CAServer $CAServer
         DomainAdfsAuditing     = Get-mdiAdfsAuditing -Domain $Domain
         DomainObjectAuditing   = Get-mdiObjectAuditing -Domain $Domain
         DomainExchangeAuditing = Get-mdiExchangeAuditing -Domain $Domain
