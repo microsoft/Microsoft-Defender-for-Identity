@@ -20,6 +20,8 @@
         Specific Domain Controller(s) to work against. If not specified, it will query AD for the list of DCs in the domain.
     .PARAMETER CAServer
         Specific Certificate Authority server(s) to work against. If not specified, it will query AD for the members of the "Cert Publishers" group.
+    .PARAMETER SkipCA
+        Skip Certificate Authority servers
     .PARAMETER OpenHtmlReport
         Open the HTML report at the end of the collection process.
     .EXAMPLE
@@ -29,13 +31,15 @@
     .EXAMPLE
         .\Test-MdiReadiness.ps1 -CAServer 'myCA01', 'myCA02'
     .EXAMPLE
+        .\Test-MdiReadiness.ps1 -SkipCA
+    .EXAMPLE
         .\Test-MdiReadiness.ps1 -Verbose
 #>
 
 #Requires -Version 4.0
 #requires -Module ActiveDirectory
 
-[CmdletBinding(SupportsShouldProcess = $true)]
+[CmdletBinding(SupportsShouldProcess = $true, DefaultParameterSetName = 'IncludeCA')]
 param (
     [Parameter(Mandatory = $false, HelpMessage = 'Path to a folder where the reports are be saved')]
     [string] $Path = '.',
@@ -43,8 +47,10 @@ param (
     [string] $Domain = $null,
     [Parameter(Mandatory = $false, HelpMessage = 'Specific Domain Controller(s) to work against. If not specified, it will query AD for the list of DCs in the domain')]
     [string[]] [Alias('DC')] $DomainController = $null,
-    [Parameter(Mandatory = $false, HelpMessage = 'Specific Certificate Authority server(s) to work against. If not specified, it will query AD for the members of the "Cert Publishers" group')]
+    [Parameter(Mandatory = $false, ParameterSetName = 'IncludeCA', HelpMessage = 'Specific Certificate Authority server(s) to work against. If not specified, it will query AD for the members of the "Cert Publishers" group')]
     [string[]] [Alias('CA')] $CAServer = $null,
+    [Parameter(Mandatory = $false, ParameterSetName = 'SkipCA', HelpMessage = 'Skip Certificate Authority servers')]
+    [switch] $SkipCA,
     [Parameter(Mandatory = $false, HelpMessage = 'Open the HTML report at the end of the collection process')]
     [switch] $OpenHtmlReport
 )
@@ -113,6 +119,47 @@ S-1-1-0,48,3,194
 
 #region Helper functions
 
+function Get-mdiRemoteTempFolder {
+    param (
+        [Parameter(Mandatory = $true)] [string] $ComputerName
+    )
+
+    try {
+        $wmiParamsTemp = @{
+            ComputerName = $ComputerName
+            Namespace    = 'root\cimv2'
+            Class        = 'Win32_Environment'
+            Filter       = "Name='TEMP' AND SystemVariable=TRUE"
+            ErrorAction  = 'SilentlyContinue'
+        }
+        $envTempPath = (Get-WmiObject @wmiParamsTemp).VariableValue
+
+        if ($envTempPath -match '%SystemDrive%|%SystemDirectory%|%WindowsDirectory%') {
+            $wmiParamsOS = @{
+                ComputerName = $ComputerName
+                Namespace    = 'root\cimv2'
+                Class        = 'Win32_OperatingSystem'
+                ErrorAction  = 'SilentlyContinue'
+            }
+            $osVars = Get-WmiObject @wmiParamsOS
+            $envTempPath = $envTempPath -replace '%SystemDrive%', $osVars.SystemDrive
+            $envTempPath = $envTempPath -replace '%SystemDirectory%', $osVars.SystemDirectory
+            $envTempPath = $envTempPath -replace '%WindowsDirectory%', $osVars.WindowsDirectory
+        }
+
+        if ($envTempPath -match '%SystemRoot%') {
+            $HKLM = 2147483650
+            $reg = [WMIClass]('\\{0}\ROOT\DEFAULT:StdRegProv' -f $ComputerName)
+            $SystemRoot = $reg.GetStringValue($HKLM, 'SOFTWARE\Microsoft\Windows NT\CurrentVersion', 'SystemRoot').sValue
+            $envTempPath = $envTempPath -replace '%SystemRoot%', $SystemRoot
+        }
+
+    } catch {
+        $envTempPath = 'C:\Windows\Temp'
+    }
+    $envTempPath
+}
+
 function Invoke-mdiRemoteCommand {
     param (
         [Parameter(Mandatory = $true)] [string] $ComputerName,
@@ -129,14 +176,14 @@ function Invoke-mdiRemoteCommand {
             ErrorAction  = 'SilentlyContinue'
         }
         if ($LocalFile -eq [string]::Empty) {
-            $LocalFile = 'C:\Windows\Temp\mdi-{0}.tmp' -f [guid]::NewGuid().GUID
+            $LocalFile = Join-Path -Path (Get-mdiRemoteTempFolder -ComputerName $ComputerName) -ChildPath ('mdi-{0}.tmp' -f , [guid]::NewGuid().GUID)
             $wmiParams['ArgumentList'] = '{0} 2>&1>{1}' -f $CommandLine, $LocalFile
         } else {
             $wmiParams['ArgumentList'] = $CommandLine
         }
 
         $result = Invoke-WmiMethod @wmiParams
-        $maxWait = [datetime]::Now.AddSeconds(15)
+        $maxWait = [datetime]::Now.AddSeconds(30)
 
         $waitForProcessParams = @{
             ComputerName = $ComputerName
@@ -489,7 +536,7 @@ function Get-mdiAdvancedAuditing {
     )
     $properties = 'Policy Target', 'Subcategory GUID', 'Inclusion Setting', 'Setting Value'
     $expected = @($ExpectedAuditing | ConvertFrom-Csv)
-    $LocalFile = 'C:\Windows\Temp\mdi-{0}.csv' -f [guid]::NewGuid().Guid
+    $LocalFile = Join-Path -Path (Get-mdiRemoteTempFolder -ComputerName $ComputerName) -ChildPath ('mdi-{0}.csv' -f , [guid]::NewGuid().GUID)
     $commandLine = 'cmd.exe /c auditpol.exe /backup /file:{0}' -f $LocalFile
     $output = Invoke-mdiRemoteCommand -ComputerName $ComputerName -CommandLine $commandLine -LocalFile $LocalFile
     if ($output -and $output.Count -gt 1) {
@@ -923,6 +970,8 @@ li:before { content: "►"; display: block; float: left; width: 1.5em; color: #c
             -replace '<td>True', '<td class="green">True') `
             -replace '<td>False', '<td class="red">False' `
             -join [environment]::NewLine
+    } elseif ($SkipCA) {
+        '<table><tr><td>CA servers validation skipped</td></tr></table>'
     } else {
         '<table><tr><td>No CA servers found</td></tr></table>'
     }
@@ -1001,11 +1050,13 @@ if ($PSCmdlet.ShouldProcess($Domain, 'Create MDI related configuration reports')
     $report = @{
         Domain                 = $Domain
         DomainControllers      = Get-mdiDomainControllerReadiness -Domain $Domain -DomainController $DomainController
-        CAServers              = Get-mdiCAReadiness -Domain $Domain -CAServer $CAServer
         DomainAdfsAuditing     = Get-mdiAdfsAuditing -Domain $Domain
         DomainObjectAuditing   = Get-mdiObjectAuditing -Domain $Domain
         DomainExchangeAuditing = Get-mdiExchangeAuditing -Domain $Domain
         DomainSchemaVersion    = Get-DomainSchemaVersion -Domain $Domain
+    }
+    if (-not $SkipCA) {
+        $report.CAServers = Get-mdiCAReadiness -Domain $Domain -CAServer $CAServer
     }
 
     $htmlReportFile = Set-MdiReadinessReport -Domain $Domain -Path $Path -ReportData $report

@@ -37,6 +37,8 @@ DESCRIPTION
 SYNTAX
     .\Test-MdiReadiness.ps1 [[-Path] <String>] [[-Domain] <String>] [[-DomainController] <String[]>] [[-CAServer] <String[]>] [-OpenHtmlReport] [-WhatIf] [-Confirm] [<CommonParameters>]
 
+    .\Test-MdiReadiness.ps1 [[-Path] <String>] [[-Domain] <String>] [[-DomainController] <String[]>] [-SkipCA] [-OpenHtmlReport] [-WhatIf] [-Confirm] [<CommonParameters>]
+
 PARAMETERS
     -Path <String>
         Path to a folder where the reports are be saved. Defaults to the current folder.
@@ -71,6 +73,15 @@ PARAMETERS
         Required?                    false
         Position?                    4
         Default value
+        Accept pipeline input?       false
+        Accept wildcard characters?  false
+
+    -SkipCA [<SwitchParameter>]
+        Skip Certificate Authority servers
+
+        Required?                    false
+        Position?                    named
+        Default value                False
         Accept pipeline input?       false
         Accept wildcard characters?  false
 
