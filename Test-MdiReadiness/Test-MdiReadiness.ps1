@@ -727,6 +727,7 @@ function Get-DomainSchemaVersion {
         69 = 'Windows Server 2012 R2'
         87 = 'Windows Server 2016'
         88 = 'Windows Server 2019 / 2022'
+        90 = 'Windows Server vNext'
     }
 
     Write-Verbose -Message 'Getting AD Schema Version'
@@ -961,9 +962,13 @@ li:before { content: "►"; display: block; float: left; width: 1.5em; color: #c
     $htmlCAs = if ($ReportData.CAServers) {
         $properties = [collections.arraylist] @($ReportData.CAServers | Get-Member -MemberType NoteProperty |
                 Where-Object { $_.Definition -match '(^System.Boolean|^bool)\s+' }).Name
-        $properties.Insert(0, 'FQDN')
-        $propsToAdd = @('SensorVersion', 'CapturingComponent', 'MachineType', 'Comment')
-        [void] $properties.AddRange($propsToAdd)
+        if ($null -ne $properties) {
+            $properties.Insert(0, 'FQDN')
+            $propsToAdd = @('SensorVersion', 'CapturingComponent', 'MachineType', 'Comment')
+            [void] $properties.AddRange($propsToAdd)
+        } else {
+            $properties = [collections.arraylist]@('FQDN', 'Comment')
+        }
         $regReplacePattern = '<th>(?!FQDN)(?!{0})(\w+)' -f ($propsToAdd -join '|')
         ((($ReportData.CAServers | Sort-Object FQDN | Select-Object $properties | ConvertTo-Html -Fragment) `
                 -replace $regReplacePattern, '<th><a href="https://aka.ms/mdi/$1">$1</a>') `
