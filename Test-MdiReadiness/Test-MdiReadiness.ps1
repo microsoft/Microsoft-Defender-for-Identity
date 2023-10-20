@@ -1005,7 +1005,7 @@ li:before { content: "►"; display: block; float: left; width: 1.5em; color: #c
 <ul>
 <li>For VMware virtualized machines, please verify that the memory is allocated to the virtual machine at all times, and that the <i>'Large Send Offload (LSO)'</i> is disabled</li>
 <li>Please verify that the required ports are opened from the sensor servers to the devices on the network. For more details, see <a href='{5}/NNR'>{5}/NNR</a></li>
-<li>Please verify that the <i>'Restrict clients allowed to make remote calls to SAM'</i> policy is configured as required. For more details, see <a href='{4}/SAMR'>{5}/SAMR</a></li>
+<li>Please verify that the <i>'Restrict clients allowed to make remote calls to SAM'</i> policy is configured as required. For more details, see <a href='{5}/SAMR'>{5}/SAMR</a></li>
 <li>Please verify that the Directory Services Account (DSA) configured for the domain, has read permissions on the <i>Deleted Objects Container</i>. For more details, see <a href='{5}/dsa-permissions'>{5}/dsa-permissions</a></li>
 </ul>
 <hr>
