@@ -153,7 +153,6 @@ function Get-mdiRemoteTempFolder {
             $SystemRoot = $reg.GetStringValue($HKLM, 'SOFTWARE\Microsoft\Windows NT\CurrentVersion', 'SystemRoot').sValue
             $envTempPath = $envTempPath -replace '%SystemRoot%', $SystemRoot
         }
-
     } catch {
         $envTempPath = 'C:\Windows\Temp'
     }
@@ -584,7 +583,6 @@ function Get-mdiDsSacl {
             @{N = 'AuditFlagsValue'; E = { $_.AuditFlags.value__ } },
             @{N = 'AceFlagsValue'; E = { $_.AceFlags.value__ } }
 
-
         $properties = ($expectedAuditing | Get-Member -MemberType NoteProperty).Name
         $compareParams = @{
             ReferenceObject  = $expectedAuditing | Select-Object -Property $properties
@@ -775,8 +773,6 @@ function Get-mdiDomainControllerReadiness {
     Write-Verbose -Message "Found $($dcs.Count) Domain Controller(s)"
 
     foreach ($dc in $dcs) {
-
-
         if (Test-Connection -ComputerName $dc.FQDN -Count 2 -Quiet) {
             $details = [ordered]@{}
 
@@ -821,8 +817,6 @@ function Get-mdiDomainControllerReadiness {
             $osVer = Get-mdiOSVersion -ComputerName $dc.FQDN
             $dc.Add('OSVersion', $osVer.isOsVerOk)
             $details.Add('OSVersionDetails', $osVer.details)
-
-
         } else {
             $dc.Add('Comment', 'Server is not available')
             Write-Warning ('{0} is not available' -f $dc.FQDN)
@@ -865,7 +859,6 @@ function Get-mdiCAReadiness {
     Write-Verbose -Message "Found $($cas.Count) CA server(s)"
 
     foreach ($ca in $cas) {
-
         if (Test-Connection -ComputerName $ca.FQDN -Count 2 -Quiet) {
             $details = [ordered]@{}
 
@@ -910,8 +903,6 @@ function Get-mdiCAReadiness {
             $osVer = Get-mdiOSVersion -ComputerName $ca.FQDN
             $ca.Add('OSVersion', $osVer.isOsVerOk)
             $details.Add('OSVersionDetails', $osVer.details)
-
-
         } else {
             $ca.Add('Comment', 'Server is not available')
             Write-Warning ('{0} is not available' -f $ca.FQDN)
