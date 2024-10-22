@@ -843,7 +843,8 @@ function Get-mdiCAReadiness {
     if ([string]::IsNullOrEmpty($CAServer)) {
         Write-Verbose -Message "Searching for CA servers in $Domain"
         try {
-            $CAServer = Get-ADGroupMember -Server $Domain -Identity 'Cert Publishers' -ErrorAction Stop | Where-Object { $_.objectClass -eq 'computer' }
+            $CertPublishersSID = $((Get-ADDomain).DomainSID.Value + "-517")
+            $CAServer = Get-ADGroupMember -Server $Domain -Identity $CertPublishersSID -ErrorAction Stop | Where-Object { $_.objectClass -eq 'computer' }
         } catch {
             $CAServer = $null
         }
