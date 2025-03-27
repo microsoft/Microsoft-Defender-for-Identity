@@ -51,9 +51,15 @@ param (
     [string[]] [Alias('CA')] $CAServer = $null,
     [Parameter(Mandatory = $false, ParameterSetName = 'SkipCA', HelpMessage = 'Skip Certificate Authority servers')]
     [switch] $SkipCA,
+    [Parameter(Mandatory = $false, ParameterSetName = 'IncludeEntraConnect', HelpMessage = 'Specific Entra Connect server(s) to work against. If not specified, it will query AD User for the "*configured to synchronize to tenant*" description')]
+    [string[]] [Alias('EC')] $EntraConnectServer = $null,
+    [Parameter(Mandatory = $false, ParameterSetName = 'SkipEntraConnect', HelpMessage = 'Skip Entra Connect servers')]
+    [switch] $SkipEntraConnect,
     [Parameter(Mandatory = $false, HelpMessage = 'Open the HTML report at the end of the collection process')]
     [switch] $OpenHtmlReport
 )
+
+
 
 #region General settings
 
@@ -93,6 +99,11 @@ S-1-1-0,32,3,194
     ADFSAuditing           = @'
 SecurityIdentifier,AccessMask,AuditFlagsValue,AceFlagsValue
 S-1-1-0,48,3,194
+'@
+
+    AdvancedAuditPolicyEntraConnect   = @'
+Policy Target,Subcategory,Subcategory GUID,Inclusion Setting,Setting Value
+System,Logon,{0cce9215-69ae-11d9-bed3-505054503030},Success and Failure,3
 '@
 
     NTLMAuditing           = @(
@@ -364,6 +375,21 @@ function Get-mdiCAAuditing {
     }
     [PSCustomObject]@{
         isCaAuditingOk = @($details | Where-Object { $_.value -notmatch $_.expectedValue }).Count -eq 0
+        details        = $details | Select-Object regKey, value
+    }
+}
+
+function Get-mdiEntraConnectAuditing {
+    param (
+        [Parameter(Mandatory = $true)] [string] $ComputerName
+    )
+
+    $activeName = Get-mdiRegistryValueSet -ComputerName $ComputerName -ExpectedRegistrySet $settings.AdvancedAuditPolicyEntraConnect
+    $details = $settings.AdvancedAuditPolicyEntraConnect | ForEach-Object {
+        Get-mdiRegistryValueSet -ComputerName $ComputerName -ExpectedRegistrySet ($_ -f $activeName.value)
+    }
+    [PSCustomObject]@{
+        isEntraConnectAuditingOk = @($details | Where-Object { $_.value -notmatch $_.expectedValue }).Count -eq 0
         details        = $details | Select-Object regKey, value
     }
 }
@@ -923,6 +949,85 @@ function Get-mdiCAReadiness {
     }
 }
 
+function Get-mdiEntraConnectReadiness {
+    [CmdletBinding(SupportsShouldProcess = $true)]
+    param(
+        [Parameter(Mandatory = $true)] [string] $Domain,
+        [Parameter(Mandatory = $false)] [string[]] $EntraConnectServer = $null
+    )
+
+    if ([string]::IsNullOrEmpty($EntraConnectServer)) {
+        Write-Verbose -Message "Searching for Entra Connect servers in $Domain"
+        try {
+            $EntraConnectServer = foreach ($ecsrv in (Get-ADUser -LDAPFilter "(description=*configured to synchronize to tenant*)" -Properties description | ForEach-Object { $_.description.SubString(142, $_.description.IndexOf(" ", 142) - 142)})) {(Get-ADComputer $ecsrv).distinguishedName}
+        } catch {
+            $EntraConnectServer = $null
+        }
+    } else {
+        Write-Verbose -Message "Using the provided list of Entra Connect server(s)"
+    }
+    $ecs = @($EntraConnectServer | ForEach-Object {
+            try {
+                $ecsComputer = Get-ADComputer -Identity $_ -Server $Domain -Properties DNSHostName, IPv4Address, OperatingSystem -ErrorAction SilentlyContinue
+                @{
+                    FQDN = $ecsComputer.DNSHostName
+                    IP   = $ecsComputer.IPv4Address
+                    OS   = $ecsComputer.OperatingSystem
+                }
+            } catch {
+                Write-Verbose $_.Exception.Message
+            }
+        })
+    Write-Verbose -Message "Found $($ecs.Count) CA server(s)"
+
+    foreach ($ec in $ecs) {
+
+        if (Test-Connection -ComputerName $ec.FQDN -Count 2 -Quiet) {
+            $details = [ordered]@{}
+
+            Write-Verbose -Message "Testing server requirements for $($ec.FQDN)"
+            $serverRequirements = Get-mdiServerRequirements -ComputerName $ec.FQDN
+            $ec.Add('ServerRequirements', $serverRequirements.isMinHwRequirementsOk)
+            $details.Add('ServerRequirementsDetails', $serverRequirements.details)
+
+            Write-Verbose -Message "Testing power settings for $($ec.FQDN)"
+            $powerSettings = Get-mdiPowerScheme -ComputerName $ec.FQDN
+            $ec.Add('PowerSettings', $powerSettings.isPowerSchemeOk)
+            $details.Add('PowerSettingsDetails', $powerSettings.details)
+
+            Write-Verbose -Message "Testing advanced auditing for $($ec.FQDN)"
+            $AdvancedAuditingEntraConnect = Get-mdiAdvancedAuditing -ComputerName $ec.FQDN -ExpectedAuditing $settings.AdvancedAuditPolicyEntraConnect
+            $ec.Add('AdvancedAuditingEntraConnect', $AdvancedAuditingEntraConnect.isAdvancedAuditingOk)
+            $details.Add('AdvancedAuditingEntraConnectDetails', $AdvancedAuditingEntraConnect.details)
+
+            Write-Verbose -Message "Testing MDI sensor for $($ec.FQDN)"
+            $sensorVersion = Get-mdiSensorVersion -ComputerName $ec.FQDN
+            $ec.Add('SensorVersion', $sensorVersion)
+
+            Write-Verbose -Message "Testing capturing component for $($ec.FQDN)"
+            $capComponent = Get-mdiCaptureComponent -ComputerName $ec.FQDN
+            $ec.Add('CapturingComponent', $capComponent)
+
+            Write-Verbose -Message "Getting virtualization platform for $($ec.FQDN)"
+            $machineType = Get-mdiMachineType -ComputerName $ec.FQDN
+            $ec.Add('MachineType', $machineType)
+
+            Write-Verbose -Message "Getting Operating System for $($ec.FQDN)"
+            $osVer = Get-mdiOSVersion -ComputerName $ec.FQDN
+            $ec.Add('OSVersion', $osVer.isOsVerOk)
+            $details.Add('OSVersionDetails', $osVer.details)
+
+
+        } else {
+            $ec.Add('Comment', 'Server is not available')
+            Write-Warning ('{0} is not available' -f $ec.FQDN)
+        }
+
+        $ec.Add('Details', $details)
+        [PSCustomObject]$ec
+    }
+}
+
 function Set-MdiReadinessReport {
     param (
         [Parameter(Mandatory = $true)] [string] $Domain,
@@ -982,6 +1087,28 @@ li:before { content: "►"; display: block; float: left; width: 1.5em; color: #c
         '<table><tr><td>No CA servers found</td></tr></table>'
     }
 
+    $htmlEntraConnect = if ($ReportData.EntraConnectServers) {
+        $properties = [collections.arraylist] @($ReportData.EntraConnectServers | Get-Member -MemberType NoteProperty |
+                Where-Object { $_.Definition -match '(^System.Boolean|^bool)\s+' }).Name
+        if ($null -ne $properties) {
+            $properties.Insert(0, 'FQDN')
+            $propsToAdd = @('SensorVersion', 'CapturingComponent', 'MachineType', 'Comment')
+            [void] $properties.AddRange($propsToAdd)
+        } else {
+            $properties = [collections.arraylist]@('FQDN', 'Comment')
+        }
+        $regReplacePattern = '<th>(?!FQDN)(?!{0})(\w+)' -f ($propsToAdd -join '|')
+        ((($ReportData.EntraConnectServers | Sort-Object FQDN | Select-Object $properties | ConvertTo-Html -Fragment) `
+                -replace $regReplacePattern, '<th><a href="https://aka.ms/mdi/$1">$1</a>') `
+            -replace '<td>True', '<td class="green">True') `
+            -replace '<td>False', '<td class="red">False' `
+            -join [environment]::NewLine
+    } elseif ($SkipEntraConnect) {
+        '<table><tr><td>Entra Connect servers validation skipped</td></tr></table>'
+    } else {
+        '<table><tr><td>No Entra Connect servers found</td></tr></table>'
+    }
+
     $htmlDS = ((($ReportData | Select-Object @{N = 'Domain'; E = { $Domain } },
                 @{N = 'ObjectAuditing'; E = { $_.DomainObjectAuditing.isObjectAuditingOk } },
                 @{N = 'ExchangeAuditing'; E = { $_.DomainExchangeAuditing.isExchangeAuditingOk } },
@@ -1002,17 +1129,19 @@ li:before { content: "►"; display: block; float: left; width: 1.5em; color: #c
 {3}
 <h4>CA servers readiness</h4>
 {4}
+<h4>Entra Connect servers readiness</h4>
+{5}
 <h4>Other requirements</h4>
 <ul>
 <li>For VMware virtualized machines, please verify that the memory is allocated to the virtual machine at all times, and that the <i>'Large Send Offload (LSO)'</i> is disabled</li>
-<li>Please verify that the required ports are opened from the sensor servers to the devices on the network. For more details, see <a href='{5}/NNR'>{5}/NNR</a></li>
-<li>Please verify that the <i>'Restrict clients allowed to make remote calls to SAM'</i> policy is configured as required. For more details, see <a href='{5}/SAMR'>{5}/SAMR</a></li>
-<li>Please verify that the Directory Services Account (DSA) configured for the domain, has read permissions on the <i>Deleted Objects Container</i>. For more details, see <a href='{5}/dsa-permissions'>{5}/dsa-permissions</a></li>
+<li>Please verify that the required ports are opened from the sensor servers to the devices on the network. For more details, see <a href='{6}/NNR'>{6}/NNR</a></li>
+<li>Please verify that the <i>'Restrict clients allowed to make remote calls to SAM'</i> policy is configured as required. For more details, see <a href='{6}/SAMR'>{6}/SAMR</a></li>
+<li>Please verify that the Directory Services Account (DSA) configured for the domain, has read permissions on the <i>Deleted Objects Container</i>. For more details, see <a href='{6}/dsa-permissions'>{6}/dsa-permissions</a></li>
 </ul>
 <hr>
-<br/>Full details file can be found at <a href='{6}'>{6}</a><br/>
-<br/>Created at {7} by <a href='{5}/Test-MdiReadiness'>Test-MdiReadiness.ps1</a>
-'@ -f $css, $domain, $htmlDS, $htmlDCs, $htmlCAs, 'https://aka.ms/mdi', $jsonReportFilePath, [datetime]::Now
+<br/>Full details file can be found at <a href='{7}'>{7}</a><br/>
+<br/>Created at {8} by <a href='{6}/Test-MdiReadiness'>Test-MdiReadiness.ps1</a>
+'@ -f $css, $domain, $htmlDS, $htmlDCs, $htmlCAs, $htmlEntraConnect, 'https://aka.ms/mdi', $jsonReportFilePath, [datetime]::Now
 
     $htmlReportFile = Join-Path -Path $Path -ChildPath "mdi-$Domain.html"
     Write-Verbose "Creating html report: $htmlReportFile"
@@ -1063,6 +1192,9 @@ if ($PSCmdlet.ShouldProcess($Domain, 'Create MDI related configuration reports')
     }
     if (-not $SkipCA) {
         $report.CAServers = Get-mdiCAReadiness -Domain $Domain -CAServer $CAServer
+    }
+    if (-not $SkipEntraConnect) {
+        $report.EntraConnectServers = Get-mdiEntraConnectReadiness -Domain $Domain
     }
 
     $htmlReportFile = Set-MdiReadinessReport -Domain $Domain -Path $Path -ReportData $report
