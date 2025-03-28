@@ -22,6 +22,10 @@
         Specific Certificate Authority server(s) to work against. If not specified, it will query AD for the members of the "Cert Publishers" group.
     .PARAMETER SkipCA
         Skip Certificate Authority servers
+    .PARAMETER EntraConnectServer
+        Specific Entra Connect server(s) to work against. If not specified, it will query AD for the Entra Connect server(s) in the domain.
+    .PARAMETER SkipEntraConnect
+        Skip Entra Connect servers        
     .PARAMETER OpenHtmlReport
         Open the HTML report at the end of the collection process.
     .EXAMPLE
