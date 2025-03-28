@@ -33,6 +33,10 @@
     .EXAMPLE
         .\Test-MdiReadiness.ps1 -SkipCA
     .EXAMPLE
+        .\Test-MdiReadiness.ps1 -EntraConnectServer 'myEC01', 'myEC02'
+    .EXAMPLE
+        .\Test-MdiReadiness.ps1 -SkipEntraConnect
+    .EXAMPLE
         .\Test-MdiReadiness.ps1 -Verbose
 #>
 
