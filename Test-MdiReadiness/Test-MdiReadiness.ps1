@@ -90,6 +90,11 @@ Policy Target,Subcategory,Subcategory GUID,Inclusion Setting,Setting Value
 System,Audit Certification Services,{0cce9221-69ae-11d9-bed3-505054503030},Success and Failure,3
 '@
 
+    AdvancedAuditPolicyEntraConnect   = @'
+Policy Target,Subcategory,Subcategory GUID,Inclusion Setting,Setting Value
+System,Logon,{0cce9215-69ae-11d9-bed3-505054503030},Success and Failure,3
+'@
+
     ObjectAuditing         = @'
 SecurityIdentifier,AccessMask,AuditFlagsValue,InheritedObjectAceType,Description
 S-1-1-0,852331,1,bf967aba-0de6-11d0-a285-00aa003049e2,Descendant User Objects
@@ -107,11 +112,6 @@ S-1-1-0,32,3,194
     ADFSAuditing           = @'
 SecurityIdentifier,AccessMask,AuditFlagsValue,AceFlagsValue
 S-1-1-0,48,3,194
-'@
-
-    AdvancedAuditPolicyEntraConnect   = @'
-Policy Target,Subcategory,Subcategory GUID,Inclusion Setting,Setting Value
-System,Logon,{0cce9215-69ae-11d9-bed3-505054503030},Success and Failure,3
 '@
 
     NTLMAuditing           = @(
