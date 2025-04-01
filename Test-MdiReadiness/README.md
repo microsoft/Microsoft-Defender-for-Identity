@@ -85,6 +85,24 @@ PARAMETERS
         Accept pipeline input?       false
         Accept wildcard characters?  false
 
+    -EntraConnectServer <String[]>
+        Specific Entra Connect server(s) to work against. If not specified, it will query AD for the Entra Connect server(s) in the domain.
+
+        Required?                    false
+        Position?                    5
+        Default value
+        Accept pipeline input?       false
+        Accept wildcard characters?  false
+
+    -SkipEntraConnectServer [<SwitchParameter>]
+        Skip Certificate Authority servers
+
+        Required?                    false
+        Position?                    named
+        Default value                False
+        Accept pipeline input?       false
+        Accept wildcard characters?  false
+
     -OpenHtmlReport [<SwitchParameter>]
         Open the HTML report at the end of the collection process
 
