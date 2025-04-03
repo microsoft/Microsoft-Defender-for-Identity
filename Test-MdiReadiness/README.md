@@ -22,6 +22,11 @@ It will test the CA servers for the following items:
 - [Power scheme is set to *high performance*](https://aka.ms/mdi/powersettings)
 - [Root certificates are updated](https://aka.ms/mdi/rootcertificates)
 
+It will test the Entra Connect servers for the following items:
+
+- [Advanced Audit Policy Configuration for Entra Connect servers](https://learn.microsoft.com/defender-for-identity/deploy/configure-windows-event-collection#configure-auditing-on-microsoft-entra-connect)
+- [Power scheme is set to *high performance*](https://aka.ms/mdi/powersettings)
+
 ![example html report](html-report.png)
 
 ```txt
