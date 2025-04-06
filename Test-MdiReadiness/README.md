@@ -22,6 +22,11 @@ It will test the CA servers for the following items:
 - [Power scheme is set to *high performance*](https://aka.ms/mdi/powersettings)
 - [Root certificates are updated](https://aka.ms/mdi/rootcertificates)
 
+It will test the Entra Connect servers for the following items:
+
+- [Advanced Audit Policy Configuration for Entra Connect servers](https://learn.microsoft.com/defender-for-identity/deploy/configure-windows-event-collection#configure-auditing-on-microsoft-entra-connect)
+- [Power scheme is set to *high performance*](https://aka.ms/mdi/powersettings)
+
 ![example html report](html-report.png)
 
 ```txt
@@ -77,6 +82,24 @@ PARAMETERS
         Accept wildcard characters?  false
 
     -SkipCA [<SwitchParameter>]
+        Skip Certificate Authority servers
+
+        Required?                    false
+        Position?                    named
+        Default value                False
+        Accept pipeline input?       false
+        Accept wildcard characters?  false
+
+    -EntraConnectServer <String[]>
+        Specific Entra Connect server(s) to work against. If not specified, it will query AD for the Entra Connect server(s) in the domain.
+
+        Required?                    false
+        Position?                    5
+        Default value
+        Accept pipeline input?       false
+        Accept wildcard characters?  false
+
+    -SkipEntraConnectServer [<SwitchParameter>]
         Skip Certificate Authority servers
 
         Required?                    false
