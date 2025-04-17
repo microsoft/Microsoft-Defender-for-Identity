@@ -25,7 +25,7 @@
     .PARAMETER EntraConnectServer
         Specific Entra Connect server(s) to work against. If not specified, it will query AD for the Entra Connect server(s) in the domain.
     .PARAMETER SkipEntraConnect
-        Skip Entra Connect servers        
+        Skip Entra Connect servers
     .PARAMETER OpenHtmlReport
         Open the HTML report at the end of the collection process.
     .EXAMPLE
@@ -796,7 +796,13 @@ function Get-mdiDomainControllerReadiness {
     }
     $dcs = @($DomainController | ForEach-Object {
             try {
-                $dcComputer = Get-ADComputer -Identity $_ -Server $Domain -Properties DNSHostName, IPv4Address, OperatingSystem -ErrorAction SilentlyContinue
+                $getDcParams = @{
+                    Identity    =  if($_ -match '\w+\.\w+') { Get-ADObject -Filter { DNSHostName -eq $_ } } else { $_ }
+                    Server      = $Domain
+                    Properties  = 'DNSHostName', 'IPv4Address', 'OperatingSystem'
+                    ErrorAction = 'SilentlyContinue'
+                }
+                $dcComputer = Get-ADComputer @getDcParams
                 @{
                     FQDN = $dcComputer.DNSHostName
                     IP   = $dcComputer.IPv4Address
@@ -1058,7 +1064,7 @@ th { padding: 8px; text-align: left; background-color: #e4e2e0; color: #212121; 
 .red    {background-color: #cd2026; color: #ffffff; }
 .green  {background-color: #4aa564; color: #212121; }
 ul { list-style: none; padding-left: 0.5em;}
-li:before { content: "►"; display: block; float: left; width: 1.5em; color: #cd2026; }
+li:before { content: "ג–÷"; display: block; float: left; width: 1.5em; color: #cd2026; }
 </style>
 '@
     $properties = [collections.arraylist] @($ReportData.DomainControllers | Get-Member -MemberType NoteProperty |
