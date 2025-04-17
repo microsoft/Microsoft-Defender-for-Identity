@@ -1064,7 +1064,7 @@ th { padding: 8px; text-align: left; background-color: #e4e2e0; color: #212121; 
 .red    {background-color: #cd2026; color: #ffffff; }
 .green  {background-color: #4aa564; color: #212121; }
 ul { list-style: none; padding-left: 0.5em;}
-li:before { content: "ג–÷"; display: block; float: left; width: 1.5em; color: #cd2026; }
+li:before { content: "►"; display: block; float: left; width: 1.5em; color: #cd2026; }
 </style>
 '@
     $properties = [collections.arraylist] @($ReportData.DomainControllers | Get-Member -MemberType NoteProperty |
