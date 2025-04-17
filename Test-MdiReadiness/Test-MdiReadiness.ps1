@@ -986,7 +986,7 @@ function Get-mdiEntraConnectReadiness {
                 Write-Verbose $_.Exception.Message
             }
         })
-    Write-Verbose -Message "Found $($ecs.Count) CA server(s)"
+    Write-Verbose -Message "Found $($ecs.Count) Entra Connect server(s)"
 
     foreach ($ec in $ecs) {
 
