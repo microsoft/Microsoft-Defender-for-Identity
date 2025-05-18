@@ -121,8 +121,7 @@ S-1-1-0,48,3,194
     )
 
     RootCertificates       = @(
-        'D4DE20D05E66FC53FE1A50882C78DB2852CAE474'   # All customers, Baltimore CyberTrust Root
-        , 'DF3C24F9BFD666761B268073FE06D1CC8D4F82A4' # Commercial, DigiCert Global Root G2
+         'DF3C24F9BFD666761B268073FE06D1CC8D4F82A4' # Commercial, DigiCert Global Root G2
         , 'A8985D3A65E5E5C4B2D7D66D40C6DD2FB19C5436' # USGov, DigiCert Global Root CA
     )
 
