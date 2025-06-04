@@ -102,6 +102,7 @@ S-1-1-0,852331,1,bf967a9c-0de6-11d0-a285-00aa003049e2,Descendant Group Objects
 S-1-1-0,852331,1,bf967a86-0de6-11d0-a285-00aa003049e2,Descendant Computer Objects
 S-1-1-0,852331,1,ce206244-5827-4a86-ba1c-1c0c386c1b64,Descendant msDS-ManagedServiceAccount Objects
 S-1-1-0,852075,1,7b8b558a-93a5-4af7-adca-c017e67f1057,Descendant msDS-GroupManagedServiceAccount Objects
+S-1-1-0,852075,1,0feb936f-47b3-49f2-9386-1dedc2c23765,Descendant msDS-DelegatedManagedServiceAccount Objects
 '@
 
     ExchangeAuditing       = @'
