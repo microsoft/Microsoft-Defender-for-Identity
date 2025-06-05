@@ -1208,7 +1208,7 @@ if ($PSCmdlet.ShouldProcess($Domain, 'Create MDI related configuration reports')
         $report.CAServers = Get-mdiCAReadiness -Domain $Domain -CAServer $CAServer
     }
     if (-not $SkipEntraConnect) {
-        $report.EntraConnectServers = Get-mdiEntraConnectReadiness -Domain $Domain
+        $report.EntraConnectServers = Get-mdiEntraConnectReadiness -Domain $Domain -EntraConnectServer $EntraConnectServer
     }
 
     $htmlReportFile = Set-MdiReadinessReport -Domain $Domain -Path $Path -ReportData $report
