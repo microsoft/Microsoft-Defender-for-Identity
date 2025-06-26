@@ -973,7 +973,7 @@ function Get-mdiEntraConnectReadiness {
     if ([string]::IsNullOrEmpty($EntraConnectServer)) {
         Write-Verbose -Message "Searching for Entra Connect servers in $Domain"
         try {
-            $EntraConnectServer = foreach ($ecsrv in (Get-ADUser -LDAPFilter "(description=*configured to synchronize to tenant*)" -Properties description | ForEach-Object { $_.description.SubString(142, $_.description.IndexOf(" ", 142) - 142)})) {(Get-ADComputer $ecsrv).distinguishedName}
+            $EntraConnectServer = Get-ADUser -LDAPFilter "(description=*configured to synchronize to tenant*)" -Properties description | ForEach-Object { $desc = $_.description; if ($desc.Length -gt 142) { $spaceIdx = $desc.IndexOf(" ", 142); if ($spaceIdx -gt 142) { $ecsrv = $desc.Substring(142, $spaceIdx - 142); try {(Get-ADComputer $ecsrv -ErrorAction Stop).distinguishedName } catch {}}}}
         } catch {
             $EntraConnectServer = $null
         }
