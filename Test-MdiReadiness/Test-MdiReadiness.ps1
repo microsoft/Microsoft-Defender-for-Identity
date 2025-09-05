@@ -413,7 +413,7 @@ function Get-mdiCertReadiness {
     $details = $store.Certificates | Where-Object { $settings.RootCertificates -contains $_.Thumbprint }
     $store.Close()
     [PSCustomObject]@{
-        isRootCertificatesOk = @($details).Count -gt 1
+        isRootCertificatesOk = @($details).Count -ge 1
         details              = $details | Select-Object -Property Thumbprint, Subject, Issuer, NotBefore, NotAfter
     }
 }
