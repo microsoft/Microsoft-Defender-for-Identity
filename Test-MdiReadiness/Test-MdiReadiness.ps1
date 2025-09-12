@@ -73,7 +73,7 @@ param (
 
 $settings = @{
 
-    AdvancedAuditPolicyDCs = @'
+    AdvancedAuditPolicyDCs          = @'
 Policy Target,Subcategory,Subcategory GUID,Inclusion Setting,Setting Value
 System,Security System Extension,{0CCE9211-69AE-11D9-BED3-505054503030},Success and Failure,3
 System,Distribution Group Management,{0CCE9238-69AE-11D9-BED3-505054503030},Success and Failure,3
@@ -85,17 +85,17 @@ System,Directory Service Changes,{0CCE923C-69AE-11D9-BED3-505054503030},Success 
 System,Credential Validation,{0CCE923F-69AE-11D9-BED3-505054503030},Success and Failure,3
 '@
 
-    AdvancedAuditPolicyCAs = @'
+    AdvancedAuditPolicyCAs          = @'
 Policy Target,Subcategory,Subcategory GUID,Inclusion Setting,Setting Value
 System,Audit Certification Services,{0cce9221-69ae-11d9-bed3-505054503030},Success and Failure,3
 '@
 
-    AdvancedAuditPolicyEntraConnect   = @'
+    AdvancedAuditPolicyEntraConnect = @'
 Policy Target,Subcategory,Subcategory GUID,Inclusion Setting,Setting Value
 System,Logon,{0cce9215-69ae-11d9-bed3-505054503030},Success and Failure,3
 '@
 
-    ObjectAuditing         = @'
+    ObjectAuditing                  = @'
 SecurityIdentifier,AccessMask,AuditFlagsValue,InheritedObjectAceType,Description
 S-1-1-0,852331,1,bf967aba-0de6-11d0-a285-00aa003049e2,Descendant User Objects
 S-1-1-0,852331,1,bf967a9c-0de6-11d0-a285-00aa003049e2,Descendant Group Objects
@@ -105,28 +105,28 @@ S-1-1-0,852075,1,7b8b558a-93a5-4af7-adca-c017e67f1057,Descendant msDS-GroupManag
 S-1-1-0,852075,1,0feb936f-47b3-49f2-9386-1dedc2c23765,Descendant msDS-DelegatedManagedServiceAccount Objects
 '@
 
-    ExchangeAuditing       = @'
+    ExchangeAuditing                = @'
 SecurityIdentifier,AccessMask,AuditFlagsValue,AceFlagsValue
 S-1-1-0,32,3,194
 '@
 
-    ADFSAuditing           = @'
+    ADFSAuditing                    = @'
 SecurityIdentifier,AccessMask,AuditFlagsValue,AceFlagsValue
 S-1-1-0,48,3,194
 '@
 
-    NTLMAuditing           = @(
+    NTLMAuditing                    = @(
         'System\CurrentControlSet\Control\Lsa\MSV1_0,AuditReceivingNTLMTraffic,2',
         'System\CurrentControlSet\Control\Lsa\MSV1_0,RestrictSendingNTLMTraffic,1|2',
         'System\CurrentControlSet\Services\Netlogon\Parameters,AuditNTLMInDomain,7'
     )
 
-    RootCertificates       = @(
-         'DF3C24F9BFD666761B268073FE06D1CC8D4F82A4' # Commercial, DigiCert Global Root G2
+    RootCertificates                = @(
+        'DF3C24F9BFD666761B268073FE06D1CC8D4F82A4' # Commercial, DigiCert Global Root G2
         , 'A8985D3A65E5E5C4B2D7D66D40C6DD2FB19C5436' # USGov, DigiCert Global Root CA
     )
 
-    CASettings             = @{
+    CASettings                      = @{
         RegPathActive = 'System\CurrentControlSet\Services\CertSvc\Configuration,Active'
         RegistrySet   = @(
             'System\CurrentControlSet\Services\CertSvc\Configuration\{0},AuditFilter,127'
@@ -398,7 +398,7 @@ function Get-mdiEntraConnectAuditing {
     }
     [PSCustomObject]@{
         isEntraConnectAuditingOk = @($details | Where-Object { $_.value -notmatch $_.expectedValue }).Count -eq 0
-        details        = $details | Select-Object regKey, value
+        details                  = $details | Select-Object regKey, value
     }
 }
 
@@ -643,11 +643,17 @@ function Get-mdiDsSacl {
 function Get-mdiObjectAuditing {
     [CmdletBinding(SupportsShouldProcess = $true)]
     param (
-        [Parameter(Mandatory = $true)] [string] $Domain
+        [Parameter(Mandatory = $true)] [string] $Domain,
+        [Parameter(Mandatory = $false)] [int] $DomainSchemaVersion = 0
     )
 
     Write-Verbose -Message 'Getting MDI related DS Object auditing configuration'
     $expectedAuditing = $settings.ObjectAuditing | ConvertFrom-Csv | Select-Object SecurityIdentifier, AccessMask, AuditFlagsValue, InheritedObjectAceType
+
+    # Remove the msDS-DelegatedManagedServiceAccount entry if the AD schema version is less than 90 (Windows Server 2025)
+    if ($DomainSchemaVersion -lt 90) {
+        $expectedAuditing = $expectedAuditing | Where-Object { $_.InheritedObjectAceType -ne '0feb936f-47b3-49f2-9386-1dedc2c23765' }
+    }
 
     $ds = [adsi]('LDAP://{0}/ROOTDSE' -f $Domain)
     $ldapPath = 'LDAP://{0}' -f $ds.defaultNamingContext.Value
@@ -657,8 +663,8 @@ function Get-mdiObjectAuditing {
 
     $isAuditingOk = @(foreach ($applied in $appliedAuditing) {
             $expectedAuditing | Where-Object { ($_.SecurityIdentifier -eq $applied.SecurityIdentifier) -and ($_.AuditFlagsValue -eq $applied.AuditFlagsValue) -and
-        ($_.InheritedObjectAceType -eq $applied.InheritedObjectAceType) -and
-            (([System.DirectoryServices.ActiveDirectoryRights]$applied.AccessMask).HasFlag(([System.DirectoryServices.ActiveDirectoryRights]($_.AccessMask)))) }
+                ($_.InheritedObjectAceType -eq $applied.InheritedObjectAceType) -and
+                (([System.DirectoryServices.ActiveDirectoryRights]$applied.AccessMask).HasFlag(([System.DirectoryServices.ActiveDirectoryRights]($_.AccessMask)))) }
         }).Count -eq $expectedAuditing.Count
 
     $return = @{
@@ -694,8 +700,8 @@ function Get-mdiExchangeAuditing {
             $appliedAuditing = $result.details
             $isAuditingOk = @(foreach ($applied in $appliedAuditing) {
                     $expectedAuditing | Where-Object { ($_.SecurityIdentifier -eq $applied.SecurityIdentifier) -and ($_.AuditFlagsValue -eq $applied.AuditFlagsValue) -and
-                ($_.InheritedObjectAceType -eq $applied.InheritedObjectAceType) -and
-                    (([System.DirectoryServices.ActiveDirectoryRights]$applied.AccessMask).HasFlag(([System.DirectoryServices.ActiveDirectoryRights]($_.AccessMask)))) }
+                        ($_.InheritedObjectAceType -eq $applied.InheritedObjectAceType) -and
+                        (([System.DirectoryServices.ActiveDirectoryRights]$applied.AccessMask).HasFlag(([System.DirectoryServices.ActiveDirectoryRights]($_.AccessMask)))) }
                 }).Count -eq @($expectedAuditing).Count
         }
         $return = @{
@@ -730,8 +736,8 @@ function Get-mdiAdfsAuditing {
         $appliedAuditing = $result.details
         $isAuditingOk = @(foreach ($applied in $appliedAuditing) {
                 $expectedAuditing | Where-Object { ($_.SecurityIdentifier -eq $applied.SecurityIdentifier) -and ($_.AuditFlagsValue -eq $applied.AuditFlagsValue) -and
-            ($_.InheritedObjectAceType -eq $applied.InheritedObjectAceType) -and
-                (([System.DirectoryServices.ActiveDirectoryRights]$applied.AccessMask).HasFlag(([System.DirectoryServices.ActiveDirectoryRights]($_.AccessMask)))) }
+                    ($_.InheritedObjectAceType -eq $applied.InheritedObjectAceType) -and
+                    (([System.DirectoryServices.ActiveDirectoryRights]$applied.AccessMask).HasFlag(([System.DirectoryServices.ActiveDirectoryRights]($_.AccessMask)))) }
             }).Count -eq @($expectedAuditing).Count
         $return = @{
             isAdfsAuditingOk = $isAuditingOk
@@ -761,7 +767,7 @@ function Get-DomainSchemaVersion {
         69 = 'Windows Server 2012 R2'
         87 = 'Windows Server 2016'
         88 = 'Windows Server 2019 / 2022'
-        90 = 'Windows Server vNext'
+        91 = 'Windows Server 2025'
     }
 
     Write-Verbose -Message 'Getting AD Schema Version'
@@ -797,7 +803,7 @@ function Get-mdiDomainControllerReadiness {
     $dcs = @($DomainController | ForEach-Object {
             try {
                 $getDcParams = @{
-                    Identity    =  if($_ -match '\w+\.\w+') { Get-ADObject -Filter { DNSHostName -eq $_ } } else { $_ }
+                    Identity    = if ($_ -match '\w+\.\w+') { Get-ADObject -Filter { DNSHostName -eq $_ } } else { $_ }
                     Server      = $Domain
                     Properties  = 'DNSHostName', 'IPv4Address', 'OperatingSystem'
                     ErrorAction = 'SilentlyContinue'
@@ -973,7 +979,7 @@ function Get-mdiEntraConnectReadiness {
     if ([string]::IsNullOrEmpty($EntraConnectServer)) {
         Write-Verbose -Message "Searching for Entra Connect servers in $Domain"
         try {
-            $EntraConnectServer = Get-ADUser -LDAPFilter "(description=*configured to synchronize to tenant*)" -Properties description | ForEach-Object { $desc = $_.description; if ($desc.Length -gt 142) { $spaceIdx = $desc.IndexOf(" ", 142); if ($spaceIdx -gt 142) { $ecsrv = $desc.Substring(142, $spaceIdx - 142); try {(Get-ADComputer $ecsrv -ErrorAction Stop).distinguishedName } catch {}}}}
+            $EntraConnectServer = Get-ADUser -LDAPFilter "(description=*configured to synchronize to tenant*)" -Properties description | ForEach-Object { $desc = $_.description; if ($desc.Length -gt 142) { $spaceIdx = $desc.IndexOf(" ", 142); if ($spaceIdx -gt 142) { $ecsrv = $desc.Substring(142, $spaceIdx - 142); try { (Get-ADComputer $ecsrv -ErrorAction Stop).distinguishedName } catch {} } } }
         } catch {
             $EntraConnectServer = $null
         }
@@ -1196,13 +1202,14 @@ function Test-mdiReadinessResult {
 
 if (-not $Domain) { $Domain = $env:USERDNSDOMAIN }
 if ($PSCmdlet.ShouldProcess($Domain, 'Create MDI related configuration reports')) {
+    $DomainSchemaVersion = Get-DomainSchemaVersion -Domain $Domain
     $report = @{
         Domain                 = $Domain
         DomainControllers      = Get-mdiDomainControllerReadiness -Domain $Domain -DomainController $DomainController
         DomainAdfsAuditing     = Get-mdiAdfsAuditing -Domain $Domain
-        DomainObjectAuditing   = Get-mdiObjectAuditing -Domain $Domain
+        DomainObjectAuditing   = Get-mdiObjectAuditing -Domain $Domain -DomainSchemaVersion $DomainSchemaVersion.schemaVersion
         DomainExchangeAuditing = Get-mdiExchangeAuditing -Domain $Domain
-        DomainSchemaVersion    = Get-DomainSchemaVersion -Domain $Domain
+        DomainSchemaVersion    = $DomainSchemaVersion
     }
     if (-not $SkipCA) {
         $report.CAServers = Get-mdiCAReadiness -Domain $Domain -CAServer $CAServer
