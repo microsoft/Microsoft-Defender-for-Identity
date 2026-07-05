@@ -694,7 +694,7 @@ function Get-mdiExchangeAuditing {
 
         $result = Get-mdiDsSacl -LdapPath $ldapPath -ExpectedAuditing $expectedAuditing
 
-        if ($result.isAuditingOk -eq 'N/A') {
+        if ('N/A' -eq $result.isAuditingOk) {
             $isAuditingOk = $result.isAuditingOk
         } else {
             $appliedAuditing = $result.details
@@ -732,7 +732,7 @@ function Get-mdiAdfsAuditing {
 
     $result = Get-mdiDsSacl -LdapPath $ldapPath -ExpectedAuditing $expectedAuditing
 
-    if ($result.isAuditingOk -ne 'N/A') {
+    if ('N/A' -ne $result.isAuditingOk) {
         $appliedAuditing = $result.details
         $isAuditingOk = @(foreach ($applied in $appliedAuditing) {
                 $expectedAuditing | Where-Object { ($_.SecurityIdentifier -eq $applied.SecurityIdentifier) -and ($_.AuditFlagsValue -eq $applied.AuditFlagsValue) -and
