@@ -568,18 +568,33 @@ function Get-mdiAdvancedAuditing {
         [Parameter(Mandatory = $true)] [string] $ComputerName,
         [Parameter(Mandatory = $true)] [string[]] $ExpectedAuditing
     )
-    $properties = 'Policy Target', 'Subcategory GUID', 'Inclusion Setting', 'Setting Value'
+    # Only compare on language-neutral fields: the Subcategory GUID and the raw numeric
+    # Setting Value. 'Policy Target' and 'Inclusion Setting' are localized text on
+    # non-English OSes and are not needed since the GUID already uniquely identifies
+    # the subcategory being audited.
+    $properties = 'Subcategory GUID', 'Setting Value'
     $expected = @($ExpectedAuditing | ConvertFrom-Csv)
     $LocalFile = Join-Path -Path (Get-mdiRemoteTempFolder -ComputerName $ComputerName) -ChildPath ('mdi-{0}.csv' -f , [guid]::NewGuid().GUID)
     $commandLine = 'cmd.exe /c auditpol.exe /backup /file:{0}' -f $LocalFile
     $output = Invoke-mdiRemoteCommand -ComputerName $ComputerName -CommandLine $commandLine -LocalFile $LocalFile
     if ($output -and $output.Count -gt 1) {
-        $actual = $output | ConvertFrom-Csv | Where-Object {
-            $_.'Subcategory GUID' -in $expected.'Subcategory GUID'
-        } | Select-Object -Property $properties
+        # auditpol /backup writes a header row that is localized on non-English OSes (e.g.
+        # German), so parsing by header name (e.g. 'Subcategory GUID') can silently match
+        # zero rows, leaving $actual as $null and crashing Compare-Object with
+        # "argument cannot be bound to parameter 'DifferenceObject' because it is NULL"
+        # (see https://github.com/microsoft/Microsoft-Defender-for-Identity/issues/22).
+        # The column order is fixed across locales, only the header text is translated, so
+        # skip the (possibly localized) header row and re-apply fixed, language-neutral names.
+        $knownHeader = 'Machine Name', 'Policy Target', 'Subcategory', 'Subcategory GUID', 'Inclusion Setting', 'Exclusion Setting', 'Setting Value'
+        $columnCount = ($output[0] -split ',').Count
+        $header = $knownHeader[0..($columnCount - 1)]
+
+        $actual = @($output | Select-Object -Skip 1 | ConvertFrom-Csv -Header $header | Where-Object {
+                $_.'Subcategory GUID' -in $expected.'Subcategory GUID'
+            } | Select-Object -Property $properties)
 
         $compareParams = @{
-            ReferenceObject  = $expected
+            ReferenceObject  = @($expected | Select-Object -Property $properties)
             DifferenceObject = $actual
             Property         = $properties
         }
