@@ -3,7 +3,7 @@
 > [!NOTE]
 > This sizing tool is relevant only for Microsoft Defender for Identity sensor v2. It does not apply to sensor v3.
 
-[**Click here to download the tool**](https://github.com/microsoft/Microsoft-Defender-for-Identity/Sizing-Tool/releases)
+[**Click here to download the tool**](https://github.com/microsoft/Microsoft-Defender-for-Identity/releases)
 
 The sizing tool automates collection of the amount of traffic MDI would need to monitor and automatically provides supportability and resource recommendations for both the ATA (Center and Gateway) and MDI (Sensor).
 It is recommended that you run the MDI sizing tool as follows:
@@ -58,4 +58,4 @@ Verified on the following platforms:
 | Windows XP    | No  |
 | Windows 2000  | No  |
 
-[**Click here to download the tool**](https://github.com/microsoft/Microsoft-Defender-for-Identity/Sizing-Tool/releases)
+[**Click here to download the tool**](https://github.com/microsoft/Microsoft-Defender-for-Identity/releases)
